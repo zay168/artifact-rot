@@ -22,50 +22,55 @@ lui-même. Personne n'annote. Chaque cas est vrai pour une raison mécanique, é
 | `alive` | 16 | Ressources publiques adossées à des organisations pérennes (Linux, CPython, NumPy, GNU, Software Heritage, DOI d'articles publiés). | nul |
 | `malformed` | 9 | Invalidité **syntaxique**, évaluée hors ligne. Aucune requête réseau, donc aucune incertitude. | nul |
 | `waf` | 2 | Hôte derrière un pare-feu applicatif. La bonne réponse attendue est `unknown`. | nul |
-| `restricted` | ? | **Ne se fabrique pas toute seule.** Il faut posséder une ressource réellement privée ou sous embargo. | une manipulation |
+| `restricted` | 24 | Trois sources, voir §2 bis : retraits légaux GitHub (12, **non circulaire**), enregistrements Zenodo restreints (9, partiellement circulaire), ressources possédées par l'auteur (3). | une manipulation, une fois |
 
-## 2 bis. Résultat mesuré au 2026-09-20
+## 2 bis. Résultat mesuré au 2026-09-20 (famille `restricted` complétée)
 
 ```
-jeu de controle E2 — 120 cas — verdict : passe
-  alive       n=16   exactitude=1.000  unknown=0
+jeu de controle E2 — 141 cas — verdict : passe
+  alive       n=16   exactitude=0.938  unknown=1
+      X alive-012  unknown  transport_timeout  https://osf.io/ezcuj/
   dead        n=90   exactitude=1.000  unknown=0
   malformed   n=9    exactitude=1.000  unknown=0
-  restricted  n=3    exactitude=0.667  unknown=0
+  restricted  n=24   exactitude=0.958  [dont 9 circulaires ; hors circulaires : 0.933]
       X restricted-000  dead  github_api_404  https://github.com/zay168/Lucid-project
   waf         n=2    exactitude=1.000  unknown=2
 ```
 
-**119 sur 120, soit 0,9917. Le critère de 98 % est franchi. E2 passe.**
+**139 sur 141, soit 0,9858. Le critère de 98 % est franchi.**
 
-Et il faut lire la deuxième ligne avant de se réjouir de la première :
+Et cette fois la famille `restricted` pèse assez pour dire quelque chose : **24 cas, dont 15 dont
+la vérité ne vient pas de notre propre sonde.**
 
-**`restricted` est à 0,667 sur n = 3.** Le seuil global est franchi parce que la famille pèse
-2,5 % de l'effectif, pas parce que la catégorie est bien traitée. C'est exactement pour cela que
-le §5 impose de lire l'exactitude par famille et jamais seulement la globale.
+### Deux sources pour `restricted`, de qualités différentes
 
-L'unique erreur est celle qui était annoncée avant la mesure : un dépôt GitHub passé en privé est
-classé `dead`, parce que l'API renvoie `404` pour un privé comme pour un supprimé. Aucun appel
-public ne distingue les deux.
+**Non circulaire — dépôts GitHub retirés pour raisons légales (12 cas).** La vérité vient du dépôt
+public [`github/dmca`](https://github.com/github/dmca), qui archive chaque avis de retrait. Nous
+lisons un code HTTP ; le registre archive un document juridique. Les deux sont indépendants. Les
+12 sont classés `restricted` par `github_api_451_legal`.
 
-### Ce que l'enrichissement Software Heritage a réellement donné
+C'est la seule source de vérité `restricted` qui ne demande de posséder quoi que ce soit, et elle
+était introuvable jusqu'à ce qu'on cherche du côté du droit plutôt que du côté de la technique.
 
-Branché sur les `404` de forge, il a répondu pour les onze cas concernés :
+**Partiellement circulaire — enregistrements Zenodo restreints ou sous embargo (9 cas).** La vérité
+vient du champ `access` de l'API Zenodo, que notre sonde lit elle-même. Ces cas vérifient que la
+chaîne tient, **pas que la classification est juste**. Le champ `circular` les marque, et le
+rapport donne l'exactitude hors circulaires à côté de l'exactitude globale — annoncer 0,958 sans
+cette distinction aurait surestimé.
 
-| Cas | `swh_known` | `owner_still_exists` |
-|---|---|---|
-| les 10 `dead` fabriqués | `false` | `false` |
-| `restricted-000` (privé) | `false` | `true` |
+**Possédées par l'auteur (3 cas).** Un dépôt GitHub passé en privé, un projet OSF privé, un dépôt
+Zenodo sous embargo jusqu'en 2030.
 
-Il n'a pas sauvé la classification, et il ne pouvait pas : **il répond à une autre question.** SWH
-dit si un dépôt a existé publiquement — ce qui sépare le rot d'un lien qui n'a jamais marché (piège
-3) — mais rien dans une archive ne distingue « supprimé » de « passé en privé ». Sur ce cas précis
-il ignore l'origine, probablement parce que le dépôt n'est jamais resté public assez longtemps pour
-être moissonné.
+### Les deux erreurs, et pourquoi elles ne sont pas de même nature
 
-`owner_still_exists` sépare ici les deux populations (`true` contre `false`), mais c'est une
-coïncidence du jeu de contrôle : un dépôt supprimé chez un propriétaire toujours actif donnerait
-`true` lui aussi. Ce signal ne doit donc pas servir à classer, seulement à décrire.
+`alive-012` — `https://osf.io/ezcuj/` est revenu en **timeout réseau**, donc `unknown`. Ce n'est
+pas une erreur de classification : c'est la réponse correcte quand le crawler échoue (§4, piège 2).
+Elle compte comme erreur dans le score parce que le score compare à l'attendu, et c'est bien ainsi
+— mais elle mesure l'état du réseau ce jour-là, pas la qualité des sondes.
+
+`restricted-000` — le dépôt GitHub privé est classé `dead`. **C'est l'erreur annoncée avant la
+mesure, et elle est irréductible** : l'API GitHub renvoie 404 pour un dépôt privé comme pour un
+dépôt supprimé, et aucun appel public ne les distingue.
 
 ### Conséquence pour le rapport E6
 
@@ -74,8 +79,8 @@ portant `indistinguishable_private_or_deleted`**, qui majore la population possi
 comptée à tort comme morte. Un lecteur peut alors refaire le calcul dans l'autre sens. C'est la
 seule façon honnête de traiter une ambiguïté qu'on ne peut pas lever.
 
-À faire avant E5 : porter `restricted` à six ou dix entrées. Avec n = 3, une seule erreur déplace
-l'exactitude de famille de 33 points, ce qui la rend illisible.
+**Fait le 2026-09-20** : la famille est passée de 3 à 24 entrées. Avec n = 3, une seule erreur
+déplaçait l'exactitude de 33 points, ce qui la rendait illisible.
 
 ### Ce que le premier run réel a corrigé — dans le jeu, pas dans les sondes
 
@@ -97,9 +102,10 @@ défauts du jeu de contrôle, pas de la classification :
 Aucune sonde n'a été modifiée pour faire monter le score. Les deux corrections portent sur des cas
 dont l'étiquette attendue était fausse, et le raisonnement est écrit ici pour être contestable.
 
-## 3. La famille `restricted` — la seule à provisionner
+## 3. La famille `restricted` — comment elle a été constituée
 
-C'est le trou honnête du dispositif, et il est signalé plutôt que masqué.
+C'était le trou honnête du dispositif. Il est comblé, et la façon dont il l'a été mérite d'être
+écrite, parce qu'elle s'est jouée sur une idée et non sur du travail.
 
 `restricted` (la ressource existe mais l'accès est contrôlé) est la catégorie la plus difficile à
 classer correctement et la plus coûteuse à se tromper : la confondre avec `dead` gonfle
