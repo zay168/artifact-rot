@@ -27,7 +27,7 @@ politiques ; un individu n'a pas de politique, il a un serveur qui est tombé.
 |---|---|
 | E0 — veille et état de l'art | **fait** — [`docs/etat-de-lart.md`](docs/etat-de-lart.md) ; aucun observatoire continu équivalent |
 | E1 — échantillonnage stratifié figé | à faire |
-| E2 — sondes et classification | **code et tests écrits** ; verdict en attente du provisionnement `restricted` ([`docs/jeu-de-controle.md`](docs/jeu-de-controle.md)) |
+| E2 — sondes et classification | **115/115 sur les familles mesurées** au 2026-09-20 ; verdict formellement `incomplet` tant que `restricted` n'est pas provisionnée ([`docs/jeu-de-controle.md`](docs/jeu-de-controle.md)) |
 | E3 — extraction depuis le texte intégral | à faire |
 | E4 — ordonnanceur 3 passes | à faire |
 | E5 — run officiel S1 | à faire |

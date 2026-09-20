@@ -14,14 +14,50 @@ un terrain où elle se fabrique toute seule. Le jeu de contrôle applique le mê
 lui-même. Personne n'annote. Chaque cas est vrai pour une raison mécanique, écrite dans le champ
 `provenance` de chaque cas et vérifiable sans faire confiance à celui qui a rédigé la liste.
 
-## 2. Les quatre familles
+## 2. Les familles
 
 | Famille | n | Comment la vérité est fabriquée | Coût |
 |---|---|---|---|
 | `dead` | 90 | URL sur un hébergeur réel, dans un espace de noms tiré sur **128 bits aléatoires**. La collision est impossible à toute échelle pratique. | nul |
-| `alive` | 16 | Ressources publiques adossées à des organisations pérennes (Linux, CPython, NumPy, OpenAlex, Software Heritage, DOI d'articles publiés). | nul |
-| `malformed` | 10 | Invalidité **syntaxique**, évaluée hors ligne. Aucune requête réseau, donc aucune incertitude. | nul |
+| `alive` | 16 | Ressources publiques adossées à des organisations pérennes (Linux, CPython, NumPy, GNU, Software Heritage, DOI d'articles publiés). | nul |
+| `malformed` | 9 | Invalidité **syntaxique**, évaluée hors ligne. Aucune requête réseau, donc aucune incertitude. | nul |
+| `waf` | 2 | Hôte derrière un pare-feu applicatif. La bonne réponse attendue est `unknown`. | nul |
 | `restricted` | ? | **Ne se fabrique pas toute seule.** Il faut posséder une ressource réellement privée ou sous embargo. | une manipulation |
+
+## 2 bis. Résultat mesuré au 2026-09-20
+
+```
+jeu de controle E2 — 117 cas — verdict : incomplet
+  alive       n=16   exactitude=1.000  unknown=0
+  dead        n=90   exactitude=1.000  unknown=0
+  malformed   n=9    exactitude=1.000  unknown=0
+  waf         n=2    exactitude=1.000  unknown=2
+  familles absentes : restricted — verdict non emis
+```
+
+**115 cas sur 115 correctement classés sur les familles présentes.** Le verdict reste `incomplet`
+et le sera tant que `restricted` n'aura pas été provisionnée : le seuil de 98 % n'a pas de sens
+tant que la catégorie la plus difficile est absente.
+
+### Ce que le premier run réel a corrigé — dans le jeu, pas dans les sondes
+
+Le premier passage a donné 0,938 sur `alive` et 0,889 sur `dead`. Les deux causes étaient des
+défauts du jeu de contrôle, pas de la classification :
+
+1. **`openalex.org` répond `403` Cloudflare à un robot.** Les onze cas qui l'utilisaient sont
+   revenus `unknown` — ce qui est la **bonne** réponse au regard du §4 (« un `403` peut être
+   Cloudflare, pas une suppression »). Les compter comme des erreurs revenait à pénaliser la sonde
+   pour avoir refusé de conclure. Ces cas sont devenus la famille `waf`, dont la réponse attendue
+   *est* `unknown` : ils vérifient désormais que le crawler ne bascule jamais un blocage en mort.
+   Les cas génériques `alive` et `dead` sont passés sur `python.org` et `gnu.org`, qui répondent
+   honnêtement.
+2. **`https://doi. org/10.7939/…` était classé `malformed` à tort.** Ce n'est pas un lien cassé,
+   c'est un lien valide coupé par l'extraction PDF, que `repair_spaced_hosts` recolle — et doit
+   recoller. Le compter `malformed` faisait passer une réparation réussie pour un échec. Le cas est
+   resté, à sa vraie place, dans `tests/test_normalize.py::TestMetacheckBug2GrobidWhitespace`.
+
+Aucune sonde n'a été modifiée pour faire monter le score. Les deux corrections portent sur des cas
+dont l'étiquette attendue était fausse, et le raisonnement est écrit ici pour être contestable.
 
 ## 3. La famille `restricted` — la seule à provisionner
 

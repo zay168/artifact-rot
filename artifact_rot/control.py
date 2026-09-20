@@ -66,8 +66,22 @@ KNOWN_ALIVE: list[tuple[str, str]] = [
     ("data_repo", "https://zenodo.org/records/3509134"),
     ("data_repo", "https://osf.io/ezcuj/"),
     ("generic_url", "https://www.python.org/downloads/"),
-    ("generic_url", "https://openalex.org/"),
+    ("generic_url", "https://www.gnu.org/software/"),
     ("generic_url", "https://archive.softwareheritage.org/"),
+]
+
+# --- Cas `waf` : hotes derriere un pare-feu applicatif -----------------------------
+# Ajoutes apres le premier run reel, qui a montre qu'openalex.org repond 403 Cloudflare
+# a un robot. Ce n'est pas un defaut des sondes : c'est exactement le cas du §4, piege 1
+# (« un 403 peut etre Cloudflare, pas une suppression »). La bonne reponse est `unknown`,
+# et elle doit etre verifiee comme telle plutot que subie comme une erreur de score.
+#
+# Ces cas servent donc a prouver que le crawler *refuse de conclure* quand il est bloque.
+# Une regression qui les ferait basculer en `dead` serait la falsification que le plan
+# designe comme l'erreur fatale.
+WAF_CASES: list[tuple[str, str]] = [
+    ("generic_url", "https://openalex.org/"),
+    ("generic_url", "https://openalex.org/artifact-rot-absent-{t}"),
 ]
 
 # --- Cas `dead` : hebergeurs reels, espaces de noms garantis vides -----------------
@@ -80,7 +94,7 @@ DEAD_TEMPLATES: list[tuple[str, str]] = [
     ("dataset_doi", "https://doi.org/10.5281/zenodo.9{t9}"),
     ("dataset_doi", "https://doi.org/10.9999/artifact-rot-absent-{t}"),
     ("generic_url", "https://www.python.org/artifact-rot-absent-{t}/"),
-    ("generic_url", "https://openalex.org/artifact-rot-absent-{t}"),
+    ("generic_url", "https://www.gnu.org/artifact-rot-absent-{t}/"),
 ]
 
 # --- Cas `malformed` : casses des l'origine, evalues hors ligne --------------------
@@ -88,7 +102,11 @@ MALFORMED_CASES: list[str] = [
     "https://github.com/",
     "https://github.com",
     "http://doi.org/notadoi",
-    "https://doi. org/10.7939/DVN/QYMAYV",  # cesure GROBID non reparable en amont
+    # NB : `https://doi. org/10.7939/…` a ete retire de cette liste apres le premier run
+    # reel. Ce n'est PAS un lien malforme : c'est un lien valide casse par l'extraction
+    # PDF, que `repair_spaced_hosts` recolle — et doit recoller. Le compter `malformed`
+    # aurait fait passer une reparation reussie pour un echec. Le cas reste teste, a sa
+    # vraie place, dans `tests/test_normalize.py::TestMetacheckBug2GrobidWhitespace`.
     "https://.com/owner/repo",
     "https://github..com/owner/repo",
     "https://-badhost.org/data",
@@ -149,6 +167,18 @@ def build_cases(n_dead: int = 90) -> list[ControlCase]:
                 expected=None,
                 family="malformed",
                 provenance="invalidite syntaxique, verifiee hors ligne",
+            )
+        )
+
+    for i, (kind, template) in enumerate(WAF_CASES):
+        cases.append(
+            ControlCase(
+                case_id=f"waf-{i:03d}",
+                url=template.format(t=f"{rng.getrandbits(128):032x}"),
+                kind=kind,
+                expected=Status.UNKNOWN,
+                family="waf",
+                provenance="hote derriere un pare-feu applicatif : la bonne reponse est unknown",
             )
         )
 
@@ -244,8 +274,9 @@ def _score(results: list[dict]) -> dict:
     for f in families.values():
         f["accuracy"] = f["correct"] / f["n"] if f["n"] else None
 
-    scored = {r for r in families}
-    missing = {"alive", "dead", "malformed", "restricted"} - scored
+    # `waf` n'est pas dans les familles requises : c'est un garde-fou ajoute, pas une
+    # categorie du §4. Son absence n'invalide pas le verdict ; son echec, si.
+    missing = {"alive", "dead", "malformed", "restricted"} - set(families)
     n = sum(f["n"] for f in families.values())
     correct = sum(f["correct"] for f in families.values())
 
