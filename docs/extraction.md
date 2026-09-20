@@ -152,3 +152,112 @@ uv run python -m artifact_rot.harvest fetch 400    # telecharge et met en cache
 uv run python -m artifact_rot.harvest recall       # mesure le rappel
 uv run python -m artifact_rot.harvest links        # produit les liens a sonder
 ```
+
+---
+
+## 8. Ce qui existe ailleurs — trois pistes évaluées, une retenue
+
+Le plan impose de regarder avant de construire. Trois outils ou services ont été évalués **sur
+notre propre échantillon**, pas sur leur documentation.
+
+### 8.1 ScholExplorer / Scholix — abandonné, et c'est un résultat
+
+[ScholExplorer](https://scholexplorer.openaire.eu/) (OpenAIRE) agrège les liens
+publication ↔ jeu de données déclarés par Crossref, DataCite et OpenAIRE. Sur le papier, c'est le
+raccourci idéal : on n'extrait plus rien, on interroge une base curée.
+
+Mesure sur 200 articles de notre échantillon ayant un DOI :
+
+| | |
+|---|---|
+| articles avec au moins un lien Scholix | 126 / 200 (63 %) |
+| dont au moins un lien vers un **jeu de données** | **2 / 200 (1 %)** |
+| liens `IsRelatedTo → publication` (citations) | 1 060 |
+| liens `IsRelatedTo → dataset` | 2 |
+
+**Le graphe curé est quasiment vide pour ce qui nous intéresse.** Ce qu'il contient, ce sont des
+citations entre articles. La piste est abandonnée.
+
+C'est en soi une observation à reprendre dans le rapport E6 : non seulement les liens meurent,
+mais **les métadonnées structurées censées les enregistrer n'existent quasiment pas**. Un lien de
+données annoncé dans un article n'a, dans l'immense majorité des cas, aucune trace ailleurs que
+dans le texte de l'article.
+
+### 8.2 GROBID / Docling — pas maintenant, et pour une raison mesurée
+
+[GROBID](https://github.com/grobidOrg/grobid) est la référence pour convertir un PDF scientifique
+en XML structuré ; [Docling](https://github.com/docling-project/docling) fait un travail
+comparable sans serveur Java. Le projet [pdf4llm](https://github.com/The-Metascience-Observatory/pdf4llm)
+montre qu'en combinant les deux on rattrape ~10 % des articles qu'aucun des deux ne traite seul.
+
+Ce serait le réflexe. La mesure dit de s'abstenir pour l'instant :
+
+| indicateur sur nos 187 documents | valeur |
+|---|---|
+| longueur médiane du texte extrait | 36 767 caractères |
+| documents de moins de 5 000 caractères | 6 / 187 |
+| césures de fin de ligne | 0,81 pour 1 000 caractères |
+| documents au texte visiblement abîmé | 32 / 187 |
+
+**Le texte extrait n'est pas le goulot d'étranglement.** Les articles entiers sortent, et les
+liens manqués le sont à 85 % pour des raisons qu'aucun parseur ne corrige — l'URL est posée
+derrière un mot cliquable, et seule l'annotation du PDF la contient. Or on lit déjà les
+annotations.
+
+Décision : **GROBID reste une option, pas une dépendance.** Elle sera reconsidérée si E5 montre
+une attrition corrélée à la qualité du texte. Ajouter un service Java et Docker à un projet mené
+seul, pour un gain borné à ~10 % d'un sous-ensemble, est un mauvais échange aujourd'hui.
+
+### 8.3 ODDPub — méthode reprise, code non réutilisable
+
+[ODDPub](https://github.com/quest-bih/oddpub) détecte le partage de données et de code dans les
+publications biomédicales. Le paquet est en **R sous AGPL-3.0** : même situation que `metacheck`,
+le code n'est pas réutilisable dans une pile Python sans contaminer la licence.
+
+Mais [l'article publié](https://doi.org/10.5334/dsj-2020-042) est sous **CC BY 4.0**, donc la
+**méthode** se reprend avec attribution. Ce qui est repris : le principe qu'une annonce de partage
+se détecte par **co-occurrence de catégories de mots-clés dans une même phrase**, et le découpage
+en catégories. Ce qui est propre à ce dépôt : les listes elles-mêmes, réécrites pour quatre
+disciplines au lieu de la seule biomédecine.
+
+Performances rapportées par les auteurs, à titre de repère et non de promesse sur notre corpus :
+sensibilité 0,73 / spécificité 0,97 pour les données, 0,94 / 0,82 pour le code.
+
+Résultat de l'implémentation, mesuré sur nos 187 documents : la détection de section est passée de
+**7 à 11 documents**, et les faux positifs ont disparu (8 → 0 sur les refus explicites).
+
+Deux faux positifs du corpus réel sont entrés comme régressions nommées :
+
+- « these translational symmetries are **not generally available** in curved space time » —
+  déclenchait un refus de partage sur une phrase de physique théorique ;
+- une liste de références bibliographiques déclenchait un numéro d'accès, parce que le motif
+  générique `[A-Z]{1,2}\d{5,}` attrape des numéros de citation.
+
+Et un bug subtil trouvé au passage : sous `re.IGNORECASE`, `[A-Z]` accepte aussi les minuscules.
+La règle « le titre enchaîne sur la phrase, reconnaissable à la majuscule qui suit » ne
+fonctionnait donc pas du tout, et « we discuss data availability in section 4 » passait pour un
+titre de section.
+
+## 9. La déclaration de disponibilité est une institution récente
+
+Mesure sur nos 187 documents :
+
+| année | articles avec une déclaration de disponibilité |
+|---|---|
+| 2010 | 0 % |
+| 2014 | 2,9 % |
+| 2018 | 0 % |
+| 2022 | 5,4 % |
+| 2025 | **16,3 %** |
+
+Le gradient est net et il est réel — vérifié en cherchant la formule dans le texte brut, pas
+seulement via nos règles.
+
+**Conséquence de conception** : restreindre l'extraction aux déclarations de disponibilité ne
+produirait quasiment rien sur les strates anciennes, qui sont précisément celles où l'effet d'âge
+se mesure. L'extraction porte donc sur **l'article entier**, et la provenance sert à interpréter,
+pas à filtrer.
+
+**Conséquence pour E6** : le croisement « l'article annonce-t-il un partage ? » × « le lien
+résout-il ? » sera très déséquilibré entre strates. Il devra être publié comme deux mesures
+distinctes, jamais comme un taux unique.

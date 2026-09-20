@@ -43,9 +43,25 @@ AVAILABILITY_HEADINGS = re.compile(
 
 INLINE_AVAILABILITY = re.compile(
     r"""(?ix)
-    (?:data|code|software|materials?)\s+availability(?:\s+statement)?\s*[:.\-—]
+    (?:data|code|software|materials?)\s+availability(?:\s+statement)?
+    (?:
+        \s*[:.\-—]          # ponctuation explicite apres le titre
+      # Ou rien du tout : le titre enchaine directement sur la phrase. La majuscule
+      # qui suit est ce qui distingue un titre d'une mention ordinaire, d'ou le
+      # `(?-i:...)` qui desactive localement l'insensibilite a la casse — sans lui,
+      # `re.IGNORECASE` rend `[A-Z]` equivalent a `[A-Za-z]` et « we discuss data
+      # availability in section 4 » passe pour un titre de section.
+      | \s+(?=(?-i:[A-Z]))
+    )
     """
 )
+"""Forme en ligne du titre.
+
+La variante « sans ponctuation » a ete ajoutee le 2026-09-20 apres mesure : sur dix
+documents contenant la formule, quatre l'ecrivaient sans separateur, du type
+« Data Availability As declared in the paper that research data will be provided upon
+receiving requests ». L'extraction PDF colle le titre au paragraphe, et exiger un
+deux-points perdait 40 % des cas."""
 
 REFERENCE_HEADINGS = re.compile(
     r"""(?mix)
