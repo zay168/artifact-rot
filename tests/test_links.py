@@ -157,3 +157,45 @@ class TestTexteHostile:
         text = sanitize("Code : https://github.com/labo/p \ud800 fin.")
         links = extract_links(text, **PAPER)
         assert any(link.host == "github.com" for link in links)
+
+
+class TestCacheDurable:
+    """Un run de deux semaines ne doit pas etre empoisonne par sa propre interruption.
+
+    Le 2026-09-20, un run est mort en pleine ecriture et a laisse un fichier tronque.
+    Le run suivant l'a relu et est mort dessus a son tour.
+    """
+
+    def test_une_entree_corrompue_vaut_absente(self, tmp_path, monkeypatch) -> None:
+        from artifact_rot import fulltext
+
+        monkeypatch.setattr(fulltext, "CACHE_DIR", tmp_path)
+        path = fulltext.cache_path("W42")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('{"paper_id": "W42", "text": "tron', encoding="utf-8")
+        assert fulltext.load("W42") is None
+
+    def test_une_entree_vide_vaut_absente(self, tmp_path, monkeypatch) -> None:
+        from artifact_rot import fulltext
+
+        monkeypatch.setattr(fulltext, "CACHE_DIR", tmp_path)
+        path = fulltext.cache_path("W43")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("", encoding="utf-8")
+        assert fulltext.load("W43") is None
+
+    def test_aller_retour(self, tmp_path, monkeypatch) -> None:
+        from artifact_rot import fulltext
+
+        monkeypatch.setattr(fulltext, "CACHE_DIR", tmp_path)
+        doc = fulltext.Document("W44", "https://x/y.pdf", "repository", "pdf", "texte", ["https://z"])
+        fulltext.save(doc)
+        back = fulltext.load("W44")
+        assert back is not None and back.text == "texte" and back.structured_urls == ["https://z"]
+
+    def test_aucun_fichier_temporaire_ne_subsiste(self, tmp_path, monkeypatch) -> None:
+        from artifact_rot import fulltext
+
+        monkeypatch.setattr(fulltext, "CACHE_DIR", tmp_path)
+        fulltext.save(fulltext.Document("W45", "u", "repository", "pdf", "t", []))
+        assert list(tmp_path.rglob("*.part")) == []

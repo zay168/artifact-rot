@@ -278,36 +278,56 @@ def cache_path(paper_id: str) -> Path:
 
 
 def save(doc: Document) -> None:
+    """Ecriture **atomique** : fichier temporaire puis renommage.
+
+    Le 2026-09-20, un run est mort en pleine ecriture et a laisse un fichier de cache
+    tronque. Le run suivant a repris, l'a relu, et est mort dessus a son tour — un run
+    interrompu empoisonnait donc tous les suivants.
+
+    Un renommage est atomique sur les systemes de fichiers usuels : le fichier final
+    est soit absent, soit complet, jamais a moitie ecrit. C'est la meme exigence que
+    `synchronous=FULL` sur la file SQLite (§E4), pour la meme raison : le projet dure
+    deux semaines et rien ne garantit qu'il ne sera pas interrompu.
+    """
     path = cache_path(doc.paper_id)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(
-            {
-                "paper_id": doc.paper_id,
-                "source_url": doc.source_url,
-                "source_type": doc.source_type,
-                "kind": doc.kind,
-                "text": doc.text,
-                "structured_urls": doc.structured_urls,
-                "error": doc.error,
-            },
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
+    payload = json.dumps(
+        {
+            "paper_id": doc.paper_id,
+            "source_url": doc.source_url,
+            "source_type": doc.source_type,
+            "kind": doc.kind,
+            "text": doc.text,
+            "structured_urls": doc.structured_urls,
+            "error": doc.error,
+        },
+        ensure_ascii=False,
     )
+    tmp = path.with_suffix(".json.part")
+    tmp.write_text(payload, encoding="utf-8")
+    tmp.replace(path)
 
 
 def load(paper_id: str) -> Document | None:
+    """Lit une entree du cache. Une entree illisible vaut **absente**, jamais une erreur.
+
+    Un cache est une optimisation, pas une source de verite : s'il est corrompu, on
+    re-telecharge. Le faire lever arreterait un run de deux semaines a cause d'un
+    fichier reconstructible en une requete.
+    """
     path = cache_path(paper_id)
     if not path.exists():
         return None
-    d = json.loads(path.read_text(encoding="utf-8"))
-    return Document(
-        paper_id=d["paper_id"],
-        source_url=d["source_url"],
-        source_type=d["source_type"],
-        kind=d["kind"],
-        text=d["text"],
-        structured_urls=d["structured_urls"],
-        error=d["error"],
-    )
+    try:
+        d = json.loads(path.read_text(encoding="utf-8"))
+        return Document(
+            paper_id=d["paper_id"],
+            source_url=d["source_url"],
+            source_type=d["source_type"],
+            kind=d["kind"],
+            text=d["text"],
+            structured_urls=d["structured_urls"],
+            error=d["error"],
+        )
+    except (json.JSONDecodeError, KeyError, UnicodeDecodeError, OSError):
+        return None
