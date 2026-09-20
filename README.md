@@ -29,7 +29,7 @@ politiques ; un individu n'a pas de politique, il a un serveur qui est tombé.
 | E1 — échantillonnage stratifié figé | **passé** au 2026-09-20 : 40 000 articles, 20 strates, Jaccard 1,0 au rejeu ([`docs/echantillon.md`](docs/echantillon.md)) |
 | E2 — sondes et classification | **passé** au 2026-09-20 : 119/120, soit 0,9917 pour un seuil à 0,98. Réserve écrite : `restricted` est à 0,667 sur n = 3 ([`docs/jeu-de-controle.md`](docs/jeu-de-controle.md)) |
 | E3 — extraction depuis le texte intégral | **mesuré** au 2026-09-20 : rappel textuel 0,495 ; l’extraction prend l’union texte + balisage ([`docs/extraction.md`](docs/extraction.md)). Cache à reconstruire avant E5 |
-| E4 — ordonnanceur 3 passes | à faire |
+| E4 — ordonnanceur 3 passes | **passé** au 2026-09-20 : passe à blanc complète 2 363/2 363, aucun quota dépassé ([`docs/ordonnanceur.md`](docs/ordonnanceur.md)) |
 | E5 — run officiel S1 | à faire |
 | E6 — survie, demi-vie, verdict H1 | à faire |
 | E7 — décision | à faire |
@@ -62,7 +62,7 @@ Si un hébergeur demande l'arrêt, on s'arrête et on le dit dans le rapport.
 uv venv --python 3.12
 uv pip install -e ".[dev]"
 
-uv run pytest                                    # 154 tests hors ligne
+uv run pytest                                    # 197 tests hors ligne
 
 export ARTIFACT_ROT_CONTACT="vous@exemple.org"
 export GITHUB_TOKEN="ghp_..."                    # optionnel, 60 req/h -> 5000 req/h

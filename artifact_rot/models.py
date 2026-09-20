@@ -36,9 +36,19 @@ LinkKind = Literal[
     "code_repo",
     "data_repo",
     "dataset_doi",
+    "citation_doi",  # DOI d'un article cite : une reference, pas un artefact. Voir ci-dessous.
     "generic_url",
     "on_request",  # piege 4 : « available upon request » n'est pas un lien, jamais sonde
 ]
+"""**Ecart assume au PLAN.md §5** : le type `citation_doi` est ajoute.
+
+Le plan liste `dataset_doi` parmi les types suivis. Sans distinction supplementaire, ce
+type absorbait **tout** DOI rencontre, dont les milliers de DOI d'articles cites en
+bibliographie — 3 449 liens sur 8 073 extraits de 400 articles.
+
+Les compter comme artefacts aurait produit un taux de survie excellent et faux, porte
+par une population qui n'est pas celle du projet : un DOI d'article est maintenu par son
+editeur, il ne meurt pas. Voir `extract/normalize.DATASET_DOI_PREFIXES`."""
 
 LinkSource = Literal["availability_statement", "body", "references"]
 """D'ou vient le lien dans l'article.

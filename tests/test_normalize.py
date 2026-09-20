@@ -144,12 +144,25 @@ class TestKind:
             ("https://zenodo.org/records/1", "data_repo"),
             ("https://osf.io/ezcuj", "data_repo"),
             ("https://doi.org/10.5281/zenodo.123", "data_repo"),
-            ("https://doi.org/10.1371/journal.pone.1", "dataset_doi"),
             ("https://lab.univ.fr/data", "generic_url"),
+            # Prefixes d'agences de depot de donnees : de vrais artefacts.
+            ("https://doi.org/10.6084/m9.figshare.9885334", "dataset_doi"),
+            ("https://doi.org/10.17605/OSF.IO/ABCDE", "dataset_doi"),
+            ("https://doi.org/10.7910/DVN/XYZ", "dataset_doi"),
+            ("https://doi.org/10.17182/hepdata.77284", "dataset_doi"),
+            # DOI d'articles cites : des references, pas des artefacts.
+            ("https://doi.org/10.1371/journal.pone.1", "citation_doi"),
+            ("https://doi.org/10.1038/s41586-020-2649-2", "citation_doi"),
+            ("https://dx.doi.org/10.1016/j.cell.2020.01.001", "citation_doi"),
         ],
     )
     def test_classement(self, url: str, kind: str) -> None:
         assert kind_of(url) == kind
+
+    def test_un_doi_inconnu_est_une_citation_pas_un_jeu_de_donnees(self) -> None:
+        """Dans le doute, un DOI est une citation. Un depot manque est une perte ;
+        un article compte comme jeu de donnees est une faute."""
+        assert kind_of("https://doi.org/10.99999/inconnu.2026.1") == "citation_doi"
 
 
 class TestUrlsHostiles:

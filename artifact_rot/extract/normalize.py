@@ -149,12 +149,52 @@ def canonicalize(raw: str) -> str:
     return urlunsplit((scheme, netloc, path, query, ""))
 
 
+DATASET_DOI_PREFIXES = {
+    "10.5281",   # Zenodo
+    "10.5061",   # Dryad
+    "10.6084",   # Figshare
+    "10.17605",  # OSF
+    "10.7910",   # Harvard Dataverse
+    "10.1594",   # PANGAEA
+    "10.17182",  # HEPData
+    "10.3886",   # ICPSR
+    "10.18150",  # UK Data Service
+    "10.17632",  # Mendeley Data
+    "10.5063",   # KNB / DataONE
+    "10.15468",  # GBIF
+    "10.25493",  # divers depots institutionnels
+    "10.4121",   # 4TU.ResearchData
+    "10.7937",   # TCIA
+    "10.18112",  # divers
+}
+"""Prefixes DOI d'agences de depot de donnees.
+
+**Ecart assume au PLAN.md §5.** Le plan liste `dataset_doi` parmi les types suivis. La
+premiere version etiquetait ainsi **tout** DOI, y compris ceux des articles cites en
+bibliographie. Mesure du 2026-09-20 : sur 8 073 liens extraits de 400 articles, 3 449
+etaient classes `dataset_doi` alors que l'immense majorite sont des DOI d'articles.
+
+Les sonder reviendrait a mesurer la survie de la litterature scientifique — qui ne meurt
+pas, un DOI d'article est maintenu par son editeur — et a infliger des milliers de
+requetes inutiles a doi.org. Ce serait aussi un chiffre trompeur : un taux de survie
+excellent, porte par une population qui n'est pas celle du projet.
+
+D'ou un type supplementaire, `citation_doi`, exclu du sondage par defaut. La liste de
+prefixes est volontairement conservatrice : dans le doute, un DOI est une citation. Un
+depot manque est une perte ; un article compte comme jeu de donnees est une faute."""
+
+
+def doi_prefix(url: str) -> str | None:
+    m = DOI.search(url)
+    return m.group(0).split("/", 1)[0] if m else None
+
+
 def kind_of(url: str) -> str:
     host = host_of(url)
-    if host == "doi.org" or DOI.search(url):
+    if host in {"doi.org", "dx.doi.org"} or DOI.search(url):
         if ZENODO_DOI.search(url) or DRYAD_DOI.search(url):
             return "data_repo"
-        return "dataset_doi"
+        return "dataset_doi" if doi_prefix(url) in DATASET_DOI_PREFIXES else "citation_doi"
     if host in _CODE_HOSTS or SWH_ID.search(url):
         return "code_repo"
     if host in _DATA_HOSTS:

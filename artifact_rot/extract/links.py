@@ -166,7 +166,11 @@ def extract_links(
         add(raw, classify_position(pos, availability, references))
 
     for raw in structured_urls or []:
-        add(raw, "body")
+        # Les annotations d'un PDF contiennent aussi `mailto:`, `tel:` et `file:///` —
+        # les adresses des auteurs et des chemins locaux restes dans le document. Ce ne
+        # sont pas des liens d'artefacts, et il n'est pas question de les toucher.
+        if raw.lower().startswith(("http://", "https://")):
+            add(raw, "body")
 
     return links
 

@@ -14,3 +14,4 @@ runs/*
 
 # Cache de textes integraux : volumineux, reconstructible, non versionne.
 data/fulltext/
+data/queue.sqlite3*
