@@ -98,9 +98,23 @@ _TRACKING_PARAMS = {"utm_source", "utm_medium", "utm_campaign", "utm_term", "utm
 _TRAILING_PUNCT = ".,;:)]}>\"'"
 
 
+def _safe_split(url: str):
+    """`urlsplit` leve sur certaines URL reelles — un `[` isole suffit (« Invalid IPv6
+    URL »). Rencontre le 2026-09-20 sur le corpus reel, ou il a fait tomber le calcul de
+    rappel. Une URL d'article est une chaine trouvee dans un PDF : elle peut etre
+    n'importe quoi. Aucune fonction de ce module ne doit lever a cause d'elle.
+    """
+    try:
+        return urlsplit(url if "//" in url else f"https://{url}")
+    except ValueError:
+        return None
+
+
 def host_of(url: str) -> str:
-    netloc = urlsplit(url if "//" in url else f"https://{url}").netloc.lower()
-    netloc = netloc.removeprefix("www.")
+    parts = _safe_split(url)
+    if parts is None:
+        return ""
+    netloc = parts.netloc.lower().removeprefix("www.")
     return netloc.split(":")[0]
 
 
@@ -120,7 +134,11 @@ def canonicalize(raw: str) -> str:
         url = "https://doi.org/" + url
     if "//" not in url:
         url = "https://" + url
-    parts = urlsplit(url)
+    parts = _safe_split(url)
+    if parts is None:
+        # URL impossible a decouper : on la rend telle quelle. Elle sera classee
+        # `malformed_at_source` et comptee a part, jamais comme un lien mort.
+        return url
     scheme = "https"
     netloc = parts.netloc.lower()
     netloc = netloc.removeprefix("www.")
@@ -157,7 +175,9 @@ def is_malformed(raw: str) -> bool:
     Un lien bien forme mais pointant nulle part est `dead`, pas `malformed`.
     """
     candidate = canonicalize(raw)
-    parts = urlsplit(candidate)
+    parts = _safe_split(candidate)
+    if parts is None:
+        return True  # indecoupable par la bibliotheque standard : casse, par definition
     host = parts.netloc.split(":")[0]
     if not host or not _VALID_HOSTNAME.match(host):
         return True

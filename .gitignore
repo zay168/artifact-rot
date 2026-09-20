@@ -11,3 +11,6 @@ __pycache__/
 # le rapport. Le repertoire lui-meme est conserve.
 runs/*
 !runs/.gitkeep
+
+# Cache de textes integraux : volumineux, reconstructible, non versionne.
+data/fulltext/

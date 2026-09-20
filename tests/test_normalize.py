@@ -5,12 +5,15 @@ Chaque test porte le nom du mode d'echec qu'il interdit. Voir docs/etat-de-lart.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import pytest
 
 from artifact_rot.extract.normalize import (
     FIGSHARE_ID,
     canonicalize,
     dedupe,
+    host_of,
     is_malformed,
     is_on_request,
     kind_of,
@@ -147,3 +150,39 @@ class TestKind:
     )
     def test_classement(self, url: str, kind: str) -> None:
         assert kind_of(url) == kind
+
+
+class TestUrlsHostiles:
+    """URL reelles qui faisaient lever la bibliotheque standard.
+
+    Rencontrees le 2026-09-20 sur le corpus : le calcul de rappel s'est arrete net sur
+    un `[` isole (« Invalid IPv6 URL »). Une URL d'article est une chaine trouvee dans
+    un PDF : elle peut etre n'importe quoi, et aucune fonction de ce module ne doit
+    lever a cause d'elle.
+    """
+
+    HOSTILES: ClassVar[list[str]] = [
+        "https://exemple.org/[truc]",
+        "https://[pas-une-ipv6/data",
+        "https://ex]emple.org/x",
+        "https://",
+        "http://[",
+        "https://a b c",
+        "",
+    ]
+
+    @pytest.mark.parametrize("url", HOSTILES)
+    def test_host_of_ne_leve_jamais(self, url: str) -> None:
+        assert isinstance(host_of(url), str)
+
+    @pytest.mark.parametrize("url", HOSTILES)
+    def test_canonicalize_ne_leve_jamais(self, url: str) -> None:
+        assert isinstance(canonicalize(url), str)
+
+    @pytest.mark.parametrize("url", HOSTILES)
+    def test_is_malformed_ne_leve_jamais(self, url: str) -> None:
+        assert isinstance(is_malformed(url), bool)
+
+    @pytest.mark.parametrize("url", HOSTILES)
+    def test_kind_of_ne_leve_jamais(self, url: str) -> None:
+        assert isinstance(kind_of(url), str)
