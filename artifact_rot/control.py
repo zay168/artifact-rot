@@ -125,6 +125,16 @@ class ControlCase(BaseModel):
     family: str
     provenance: str
     """Comment la verite est connue. Rend le jeu auditable sans faire confiance a l'auteur."""
+    circular: bool = False
+    """La verite vient-elle du **meme champ** que lit la sonde ?
+
+    Un enregistrement Zenodo declare `restricted` par l'API, verifie par une sonde qui
+    lit ce meme champ, ne teste pas le jugement : il teste que la chaine tient. C'est
+    utile, mais ce n'est pas la meme chose, et un score qui melange les deux surestime.
+
+    Le rapport separe donc les cas circulaires des autres. Un depot GitHub retire pour
+    raisons legales, lui, est non circulaire : la verite vient du registre public
+    `github/dmca`, un document juridique, pas d'un code HTTP."""
 
 
 def build_cases(n_dead: int = 90) -> list[ControlCase]:
@@ -198,6 +208,7 @@ def _load_restricted() -> list[ControlCase]:
             expected=Status.RESTRICTED,
             family="restricted",
             provenance=entry["provenance"],
+            circular=bool(entry.get("circular", False)),
         )
         for i, entry in enumerate(raw)
     ]
@@ -237,6 +248,7 @@ def run(cases: list[ControlCase], settings: Settings) -> dict:
                         "observed": "malformed" if observed else "well_formed",
                         "correct": observed,
                         "reason": "offline_syntax_check",
+                        "circular": case.circular,
                         "evidence": {},
                     }
                 )
@@ -252,6 +264,7 @@ def run(cases: list[ControlCase], settings: Settings) -> dict:
                     "observed": result.status.value,
                     "correct": result.status is case.expected,
                     "reason": result.reason,
+                    "circular": case.circular,
                     "evidence": result.evidence,
                 }
             )
@@ -271,8 +284,17 @@ def _score(results: list[dict]) -> dict:
                 {"case_id": r["case_id"], "url": r["url"], "observed": r["observed"], "reason": r["reason"]}
             )
 
-    for f in families.values():
+    # Un cas dont la verite vient du meme champ que lit la sonde ne teste pas le
+    # jugement : il teste que la chaine tient. Les melanger surestime le score.
+    for family, f in families.items():
+        rows = [r for r in results if r["family"] == family]
+        circ = [r for r in rows if r.get("circular")]
+        noncirc = [r for r in rows if not r.get("circular")]
         f["accuracy"] = f["correct"] / f["n"] if f["n"] else None
+        f["n_circular"] = len(circ)
+        f["accuracy_non_circular"] = (
+            sum(r["correct"] for r in noncirc) / len(noncirc) if noncirc else None
+        )
 
     # `waf` n'est pas dans les familles requises : c'est un garde-fou ajoute, pas une
     # categorie du §4. Son absence n'invalide pas le verdict ; son echec, si.
@@ -325,7 +347,12 @@ def main(argv: list[str] | None = None) -> int:
     print(f"jeu de controle E2 — {report['n_cases']} cas — verdict : {report['verdict']}")
     for family, f in sorted(report["families"].items()):
         acc = f["accuracy"]
-        print(f"  {family:<11} n={f['n']:<4} exactitude={acc:.3f}  unknown={f['unknown']}")
+        line = f"  {family:<11} n={f['n']:<4} exactitude={acc:.3f}  unknown={f['unknown']}"
+        if f.get("n_circular"):
+            nc = f["accuracy_non_circular"]
+            nc_txt = f"{nc:.3f}" if nc is not None else "n/a"
+            line += f"  [dont {f['n_circular']} circulaires ; hors circulaires : {nc_txt}]"
+        print(line)
         for err in f["errors"][:5]:
             print(f"      X {err['case_id']} {err['observed']:<10} {err['reason']}  {err['url']}")
     if report["missing_families"]:

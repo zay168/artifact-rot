@@ -47,7 +47,7 @@ class Settings:
     SWH limite le debit pendant un run.
     """
 
-    timeout_s: float = 20.0
+    timeout_s: float = 12.0
     max_concurrency: int = 4
     """Volontairement bas. Le cout du projet est le temps calendaire (§8), pas le debit."""
 

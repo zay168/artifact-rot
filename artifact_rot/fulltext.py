@@ -38,6 +38,12 @@ OPENALEX = "https://api.openalex.org"
 
 DocKind = Literal["pdf", "html", "jats", "none"]
 
+MAX_LOCATION_ATTEMPTS = 4
+"""Nombre maximal de localisations essayees pour un article.
+
+Quatre essais couvrent le cas normal (PDF de depot, PDF d'editeur, page de depot,
+page d'editeur). Au-dela, on paie des timeouts pour apprendre ce qu'on sait deja."""
+
 
 @dataclass
 class Document:
@@ -91,7 +97,29 @@ def rank_locations(locations: list[dict]) -> list[tuple[str, str]]:
         for is_pdf, url in ((0, loc.get("pdf_url")), (1, loc.get("landing_page_url"))):
             if url:
                 buckets.setdefault((is_pdf, repo_rank), []).append((url, stype))
-    return [item for key in sorted(buckets) for item in buckets[key]]
+
+    ordered = [item for key in sorted(buckets) for item in buckets[key]]
+
+    # Un seul essai par hote, et MAX_LOCATION_ATTEMPTS au total.
+    #
+    # Mesure du 2026-09-20 : sans cette limite, le moissonnage tombait a ~2 articles
+    # par minute, parce qu'un article a parfois dix localisations dont plusieurs chez
+    # le meme editeur — qui repond 403 ou expire a chaque fois. On payait donc le meme
+    # timeout de vingt secondes cinq fois de suite pour apprendre la meme chose.
+    #
+    # Insister chez un hote qui vient de refuser n'est pas seulement lent : c'est
+    # exactement ce que le §4, piege 5, interdit.
+    seen_hosts: set[str] = set()
+    capped: list[tuple[str, str]] = []
+    for url, stype in ordered:
+        host = httpx.URL(url).host
+        if host in seen_hosts:
+            continue
+        seen_hosts.add(host)
+        capped.append((url, stype))
+        if len(capped) >= MAX_LOCATION_ATTEMPTS:
+            break
+    return capped
 
 
 def fetch_locations(client: httpx.Client, paper_id: str, settings: Settings) -> list[dict]:
