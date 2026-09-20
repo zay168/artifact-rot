@@ -36,6 +36,17 @@ class Settings:
     est le cas majoritaire dans un observatoire de liens morts. Desactive
     automatiquement en l'absence de jeton (voir `from_env`)."""
 
+    swh_enrichment: bool = True
+    """Sur un 404 de forge, demander a Software Heritage si l'origine a ete archivee.
+
+    Ne leve pas l'ambiguite prive/supprime — rien de public ne le peut. Repond a l'autre
+    question, celle du piege 3 : le depot a-t-il existe publiquement ? Une archive prouve
+    qu'il a vecu, donc que son absence est du rot et non un lien qui n'a jamais marche.
+
+    Une requete supplementaire par 404, sur une API tierce a quota propre. A couper si
+    SWH limite le debit pendant un run.
+    """
+
     timeout_s: float = 20.0
     max_concurrency: int = 4
     """Volontairement bas. Le cout du projet est le temps calendaire (§8), pas le debit."""

@@ -27,17 +27,55 @@ lui-même. Personne n'annote. Chaque cas est vrai pour une raison mécanique, é
 ## 2 bis. Résultat mesuré au 2026-09-20
 
 ```
-jeu de controle E2 — 117 cas — verdict : incomplet
+jeu de controle E2 — 120 cas — verdict : passe
   alive       n=16   exactitude=1.000  unknown=0
   dead        n=90   exactitude=1.000  unknown=0
   malformed   n=9    exactitude=1.000  unknown=0
+  restricted  n=3    exactitude=0.667  unknown=0
+      X restricted-000  dead  github_api_404  https://github.com/zay168/Lucid-project
   waf         n=2    exactitude=1.000  unknown=2
-  familles absentes : restricted — verdict non emis
 ```
 
-**115 cas sur 115 correctement classés sur les familles présentes.** Le verdict reste `incomplet`
-et le sera tant que `restricted` n'aura pas été provisionnée : le seuil de 98 % n'a pas de sens
-tant que la catégorie la plus difficile est absente.
+**119 sur 120, soit 0,9917. Le critère de 98 % est franchi. E2 passe.**
+
+Et il faut lire la deuxième ligne avant de se réjouir de la première :
+
+**`restricted` est à 0,667 sur n = 3.** Le seuil global est franchi parce que la famille pèse
+2,5 % de l'effectif, pas parce que la catégorie est bien traitée. C'est exactement pour cela que
+le §5 impose de lire l'exactitude par famille et jamais seulement la globale.
+
+L'unique erreur est celle qui était annoncée avant la mesure : un dépôt GitHub passé en privé est
+classé `dead`, parce que l'API renvoie `404` pour un privé comme pour un supprimé. Aucun appel
+public ne distingue les deux.
+
+### Ce que l'enrichissement Software Heritage a réellement donné
+
+Branché sur les `404` de forge, il a répondu pour les onze cas concernés :
+
+| Cas | `swh_known` | `owner_still_exists` |
+|---|---|---|
+| les 10 `dead` fabriqués | `false` | `false` |
+| `restricted-000` (privé) | `false` | `true` |
+
+Il n'a pas sauvé la classification, et il ne pouvait pas : **il répond à une autre question.** SWH
+dit si un dépôt a existé publiquement — ce qui sépare le rot d'un lien qui n'a jamais marché (piège
+3) — mais rien dans une archive ne distingue « supprimé » de « passé en privé ». Sur ce cas précis
+il ignore l'origine, probablement parce que le dépôt n'est jamais resté public assez longtemps pour
+être moissonné.
+
+`owner_still_exists` sépare ici les deux populations (`true` contre `false`), mais c'est une
+coïncidence du jeu de contrôle : un dépôt supprimé chez un propriétaire toujours actif donnerait
+`true` lui aussi. Ce signal ne doit donc pas servir à classer, seulement à décrire.
+
+### Conséquence pour le rapport E6
+
+La limite ne se corrige pas, elle se borne. Le rapport doit publier **le nombre de `dead` GitHub
+portant `indistinguishable_private_or_deleted`**, qui majore la population possiblement `restricted`
+comptée à tort comme morte. Un lecteur peut alors refaire le calcul dans l'autre sens. C'est la
+seule façon honnête de traiter une ambiguïté qu'on ne peut pas lever.
+
+À faire avant E5 : porter `restricted` à six ou dix entrées. Avec n = 3, une seule erreur déplace
+l'exactitude de famille de 33 points, ce qui la rend illisible.
 
 ### Ce que le premier run réel a corrigé — dans le jeu, pas dans les sondes
 

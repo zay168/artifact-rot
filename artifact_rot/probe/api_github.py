@@ -21,6 +21,7 @@ import httpx
 from ..config import Settings
 from ..extract.normalize import BITBUCKET_SLUG, GITHUB_SLUG, GITLAB_PATH
 from ..models import Link, Status
+from .api_swh import ever_existed
 from .base import Prober, ProbeResult, truncate_body
 
 
@@ -67,6 +68,15 @@ class GitHubProber(Prober):
             ev["indistinguishable_private_or_deleted"] = True
             if settings.github_owner_check:
                 ev["owner_still_exists"] = _owner_exists(client, owner, headers)
+            if settings.swh_enrichment:
+                # Ne leve PAS l'ambiguite prive/supprime — rien de public ne le peut.
+                # Repond a l'autre question, celle du piege 3 : ce depot a-t-il existe
+                # publiquement ? Une archive SWH prouve qu'il a vecu, donc que son
+                # absence d'aujourd'hui est du rot et non un lien qui n'a jamais marche.
+                arch = ever_existed(client, f"https://github.com/{owner}/{repo}")
+                ev["swh_known"] = arch.known
+                ev["swh_last_visit"] = arch.last_visit
+                ev["swh_reason"] = arch.reason
             return ProbeResult(Status.DEAD, "api", "github_api_404", ev)
 
         if r.status_code == 451:
