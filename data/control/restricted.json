@@ -1,0 +1,17 @@
+[
+  {
+    "url": "https://github.com/zay168/Lucid-project",
+    "kind": "code_repo",
+    "provenance": "depot GitHub possede par l'auteur, passe en prive le 2026-09-20. Cas revelateur : l'API GitHub renvoie 404 pour un depot prive comme pour un depot supprime, aucun appel public ne les distingue. Une erreur attendue, conservee pour que la limite apparaisse dans le chiffre."
+  },
+  {
+    "url": "https://osf.io/q4zkg",
+    "kind": "data_repo",
+    "provenance": "projet OSF cree en mode prive le 2026-09-20, possede par l'auteur. L'API OSF distingue reellement prive de supprime."
+  },
+  {
+    "url": "https://zenodo.org/records/22858099",
+    "kind": "data_repo",
+    "provenance": "depot Zenodo publie le 2026-09-20, fichiers sous embargo jusqu'au 2030-01-01, possede par l'auteur. Notice publique, fichiers fermes : le cas legitime frequent en medecine."
+  }
+]

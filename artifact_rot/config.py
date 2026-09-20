@@ -23,8 +23,18 @@ class Settings:
     """Adresse de contact publique, exposee dans le User-Agent. Via ARTIFACT_ROT_CONTACT."""
 
     github_token: str | None = None
-    """Facultatif mais fortement conseille : 60 req/h sans jeton, 5000 avec.
-    Via GITHUB_TOKEN. Un jeton sans aucun scope suffit — on ne lit que du public."""
+    """60 req/h sans jeton, 5000 avec. Via GITHUB_TOKEN. Un jeton sans aucun scope
+    suffit : on ne lit que du public.
+
+    Sans jeton, le run S1 (§3, >= 2000 articles par strate croisee) est impossible :
+    le quota anonyme est epuise par quelques centaines de liens. Ce n'est donc pas
+    une commodite, c'est une condition de faisabilite de E5."""
+
+    github_owner_check: bool = True
+    """Sur un 404 GitHub, verifier si le compte proprietaire existe encore. C'est un
+    enrichissement d'analyse qui **double le cout en quota de chaque 404** — et le 404
+    est le cas majoritaire dans un observatoire de liens morts. Desactive
+    automatiquement en l'absence de jeton (voir `from_env`)."""
 
     timeout_s: float = 20.0
     max_concurrency: int = 4
@@ -54,7 +64,10 @@ class Settings:
                 "contact joignable (PLAN.md §4, piege 5). Exemple : "
                 'ARTIFACT_ROT_CONTACT="artifact-rot@exemple.org"'
             )
+        token = os.environ.get("GITHUB_TOKEN") or None
         return cls(
             contact=contact,
-            github_token=os.environ.get("GITHUB_TOKEN") or None,
+            github_token=token,
+            # Sans jeton, 60 requetes/heure : l'enrichissement passe apres la mesure.
+            github_owner_check=token is not None,
         )

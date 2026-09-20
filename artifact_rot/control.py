@@ -306,6 +306,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"erreur de configuration : {exc}", file=sys.stderr)
         return 2
 
+    if not settings.github_token:
+        print(
+            "avertissement : GITHUB_TOKEN absent. Le quota anonyme (60 req/h) ne suffit "
+            "pas a rejouer le jeu de controle plusieurs fois dans l'heure ; les cas "
+            "GitHub reviendront `unknown` sans que cela dise rien de leur etat.",
+            file=sys.stderr,
+        )
+
     report = run(build_cases(), settings)
 
     out_dir = Path("runs") / f"{datetime.now(UTC):%Y%m%dT%H%M%SZ}-control"

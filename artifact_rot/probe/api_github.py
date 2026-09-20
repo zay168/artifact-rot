@@ -42,7 +42,15 @@ class GitHubProber(Prober):
             headers["Authorization"] = f"Bearer {settings.github_token}"
 
         url = f"https://api.github.com/repos/{owner}/{repo}"
+
+        # Garde de quota : on ne frappe pas une API dont on sait qu'elle va refuser.
+        # Bruler le reste du quota en 403 est incorrect envers l'hebergeur et ne produit
+        # que des `unknown` (§4, piege 5).
+        if _QUOTA.exhausted():
+            return self._unknown("github_quota_guard", api_url=url, **_QUOTA.snapshot())
+
         r = client.get(url, headers=headers)
+        _QUOTA.observe(r)
         ev = {"api_url": url, "http_status": r.status_code, "owner": owner, "repo": repo}
 
         if r.status_code == 200:
@@ -57,7 +65,8 @@ class GitHubProber(Prober):
 
         if r.status_code == 404:
             ev["indistinguishable_private_or_deleted"] = True
-            ev["owner_still_exists"] = _owner_exists(client, owner, headers)
+            if settings.github_owner_check:
+                ev["owner_still_exists"] = _owner_exists(client, owner, headers)
             return ProbeResult(Status.DEAD, "api", "github_api_404", ev)
 
         if r.status_code == 451:
@@ -76,13 +85,66 @@ class GitHubProber(Prober):
         return ProbeResult(Status.UNKNOWN, "api", f"github_api_{r.status_code}", ev)
 
 
+class _RateLimitTracker:
+    """Suit le quota annonce par GitHub dans ses en-tetes.
+
+    Ajoute apres le run du 2026-09-20, ou trois passages du jeu de controle ont epuise
+    les 60 requetes/heure du mode anonyme et rendu neuf cas `dead` en `unknown`. Le
+    classement etait correct — un echec de crawler n'est pas un lien mort — mais la
+    mesure devenait impossible. Le probleme est d'ordonnancement, pas de classification.
+
+    Deux consequences, toutes deux de la responsabilite du §4 piege 5 :
+    la sonde cesse de frapper quand le quota est epuise plutot que d'accumuler des 403,
+    et le controle du proprietaire (qui double le cout de chaque 404) devient optionnel.
+    """
+
+    RESERVE = 2
+    """Requetes gardees en reserve : le controle de proprietaire ne doit jamais etre ce
+    qui epuise le quota au detriment d'une sonde principale."""
+
+    def __init__(self) -> None:
+        self.remaining: int | None = None
+        self.reset_at: int | None = None
+
+    def observe(self, response: httpx.Response) -> None:
+        raw = response.headers.get("x-ratelimit-remaining")
+        if raw is not None and raw.isdigit():
+            self.remaining = int(raw)
+        raw_reset = response.headers.get("x-ratelimit-reset")
+        if raw_reset is not None and raw_reset.isdigit():
+            self.reset_at = int(raw_reset)
+
+    def exhausted(self) -> bool:
+        return self.remaining is not None and self.remaining <= 0
+
+    def low(self) -> bool:
+        return self.remaining is not None and self.remaining <= self.RESERVE
+
+    def snapshot(self) -> dict[str, int | None]:
+        return {"x_ratelimit_remaining": self.remaining, "x_ratelimit_reset": self.reset_at}
+
+    def reset_tracking(self) -> None:
+        self.remaining = None
+        self.reset_at = None
+
+
+_QUOTA = _RateLimitTracker()
+
+
 def _owner_exists(client: httpx.Client, owner: str, headers: dict[str, str]) -> bool | None:
     """Le compte proprietaire existe-t-il encore ? N'est pas une preuve d'existence du
-    depot, mais separe « compte supprime » de « depot supprime » dans l'analyse."""
+    depot, mais separe « compte supprime » de « depot supprime » dans l'analyse.
+
+    Enrichissement, pas classification : il est abandonne des que le quota devient
+    serre, et le resultat vaut alors `None` (indetermine), jamais une valeur inventee.
+    """
+    if _QUOTA.low():
+        return None
     try:
         r = client.get(f"https://api.github.com/users/{owner}", headers=headers)
     except httpx.HTTPError:
         return None
+    _QUOTA.observe(r)
     if r.status_code == 200:
         return True
     if r.status_code == 404:
