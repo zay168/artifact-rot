@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.env
+
+# Les runs sont immuables et jamais nettoyes (PLAN.md §5), mais ils ne sont pas
+# versionnes par defaut : ils peuvent peser lourd et sont publies separement avec
+# le rapport. Le repertoire lui-meme est conserve.
+runs/*
+!runs/.gitkeep

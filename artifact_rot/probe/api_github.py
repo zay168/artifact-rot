@@ -1,0 +1,151 @@
+"""Sonde GitHub / GitLab / Bitbucket : API uniquement, jamais le HTML.
+
+Limite structurelle, assumee et reportee dans le rapport (§9) : l'API GitHub renvoie
+**404 pour un depot supprime comme pour un depot passe en prive**. Aucun appel public
+ne distingue les deux. On classe donc `dead` en portant dans la preuve le drapeau
+`indistinguishable_private_or_deleted`, et `probe/api_swh.py` permet de savoir
+a posteriori si le depot a existe publiquement (Software Heritage l'aurait archive).
+
+Un depot `archived` ou `disabled` reste `alive` : il resout, on peut le lire. C'est la
+resolution qu'on mesure, pas la sante du projet.
+
+Portee : on sonde l'existence du **depot**, pas celle d'un fichier ou d'un commit
+particulier a l'interieur. Un lien vers `…/blob/main/data.csv` est compte vivant si le
+depot vit. Choix conservateur, ecrit dans les limites du rapport.
+"""
+
+from __future__ import annotations
+
+import httpx
+
+from ..config import Settings
+from ..extract.normalize import BITBUCKET_SLUG, GITHUB_SLUG, GITLAB_PATH
+from ..models import Link, Status
+from .base import Prober, ProbeResult, truncate_body
+
+
+class GitHubProber(Prober):
+    name = "github"
+    method = "api"
+
+    def handles(self, link: Link) -> bool:
+        return link.host == "github.com" and bool(GITHUB_SLUG.search(link.normalized))
+
+    def check(self, client: httpx.Client, link: Link, settings: Settings) -> ProbeResult:
+        m = GITHUB_SLUG.search(link.normalized)
+        if m is None:
+            return self._unknown("github_slug_unparsed", url=link.normalized)
+        owner, repo = m.group(1), m.group(2)
+
+        headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
+        if settings.github_token:
+            headers["Authorization"] = f"Bearer {settings.github_token}"
+
+        url = f"https://api.github.com/repos/{owner}/{repo}"
+        r = client.get(url, headers=headers)
+        ev = {"api_url": url, "http_status": r.status_code, "owner": owner, "repo": repo}
+
+        if r.status_code == 200:
+            body = r.json()
+            ev |= {
+                "full_name": body.get("full_name"),
+                "archived": body.get("archived"),
+                "disabled": body.get("disabled"),
+                "pushed_at": body.get("pushed_at"),
+            }
+            return ProbeResult(Status.ALIVE, "api", "github_api_200", ev)
+
+        if r.status_code == 404:
+            ev["indistinguishable_private_or_deleted"] = True
+            ev["owner_still_exists"] = _owner_exists(client, owner, headers)
+            return ProbeResult(Status.DEAD, "api", "github_api_404", ev)
+
+        if r.status_code == 451:
+            # Retrait pour raisons legales : la ressource a existe, l'acces est bloque.
+            return ProbeResult(Status.RESTRICTED, "api", "github_api_451_legal", ev)
+
+        if r.status_code in (403, 429):
+            remaining = r.headers.get("x-ratelimit-remaining")
+            ev |= {"x_ratelimit_remaining": remaining, "retry_after": r.headers.get("retry-after")}
+            if remaining == "0" or r.status_code == 429:
+                # Echec du crawler, pas du lien (§4 piege 1).
+                return ProbeResult(Status.UNKNOWN, "api", "github_rate_limited", ev)
+            return ProbeResult(Status.UNKNOWN, "api", "github_api_403_unexplained", ev)
+
+        ev["body"] = truncate_body(r, settings)
+        return ProbeResult(Status.UNKNOWN, "api", f"github_api_{r.status_code}", ev)
+
+
+def _owner_exists(client: httpx.Client, owner: str, headers: dict[str, str]) -> bool | None:
+    """Le compte proprietaire existe-t-il encore ? N'est pas une preuve d'existence du
+    depot, mais separe « compte supprime » de « depot supprime » dans l'analyse."""
+    try:
+        r = client.get(f"https://api.github.com/users/{owner}", headers=headers)
+    except httpx.HTTPError:
+        return None
+    if r.status_code == 200:
+        return True
+    if r.status_code == 404:
+        return False
+    return None
+
+
+class GitLabProber(Prober):
+    name = "gitlab"
+    method = "api"
+
+    def handles(self, link: Link) -> bool:
+        return link.host == "gitlab.com" and bool(GITLAB_PATH.search(link.normalized))
+
+    def check(self, client: httpx.Client, link: Link, settings: Settings) -> ProbeResult:
+        m = GITLAB_PATH.search(link.normalized)
+        if m is None:
+            return self._unknown("gitlab_path_unparsed", url=link.normalized)
+        path = httpx.URL(f"https://gitlab.com/{m.group(1)}").path.strip("/")
+        from urllib.parse import quote
+
+        url = f"https://gitlab.com/api/v4/projects/{quote(path, safe='')}"
+        r = client.get(url)
+        ev = {"api_url": url, "http_status": r.status_code, "path": path}
+
+        if r.status_code == 200:
+            body = r.json()
+            ev |= {"visibility": body.get("visibility"), "archived": body.get("archived")}
+            return ProbeResult(Status.ALIVE, "api", "gitlab_api_200", ev)
+        if r.status_code == 404:
+            ev["indistinguishable_private_or_deleted"] = True
+            return ProbeResult(Status.DEAD, "api", "gitlab_api_404", ev)
+        if r.status_code in (401, 403):
+            return ProbeResult(Status.RESTRICTED, "api", "gitlab_api_forbidden", ev)
+        if r.status_code == 429:
+            return ProbeResult(Status.UNKNOWN, "api", "gitlab_rate_limited", ev)
+        ev["body"] = truncate_body(r, settings)
+        return ProbeResult(Status.UNKNOWN, "api", f"gitlab_api_{r.status_code}", ev)
+
+
+class BitbucketProber(Prober):
+    name = "bitbucket"
+    method = "api"
+
+    def handles(self, link: Link) -> bool:
+        return link.host == "bitbucket.org" and bool(BITBUCKET_SLUG.search(link.normalized))
+
+    def check(self, client: httpx.Client, link: Link, settings: Settings) -> ProbeResult:
+        m = BITBUCKET_SLUG.search(link.normalized)
+        if m is None:
+            return self._unknown("bitbucket_slug_unparsed", url=link.normalized)
+        url = f"https://api.bitbucket.org/2.0/repositories/{m.group(1)}/{m.group(2)}"
+        r = client.get(url)
+        ev = {"api_url": url, "http_status": r.status_code}
+
+        if r.status_code == 200:
+            return ProbeResult(Status.ALIVE, "api", "bitbucket_api_200", ev)
+        if r.status_code == 404:
+            ev["indistinguishable_private_or_deleted"] = True
+            return ProbeResult(Status.DEAD, "api", "bitbucket_api_404", ev)
+        if r.status_code in (401, 403):
+            return ProbeResult(Status.RESTRICTED, "api", "bitbucket_api_forbidden", ev)
+        if r.status_code == 429:
+            return ProbeResult(Status.UNKNOWN, "api", "bitbucket_rate_limited", ev)
+        ev["body"] = truncate_body(r, settings)
+        return ProbeResult(Status.UNKNOWN, "api", f"bitbucket_api_{r.status_code}", ev)
