@@ -126,3 +126,34 @@ class TestSurDemande:
     def test_une_declaration_avec_lien_n_est_pas_sur_demande(self) -> None:
         text = "Data Availability\nAll data are at https://zenodo.org/records/1.\n"
         assert count_on_request(text) == 0
+
+
+class TestTexteHostile:
+    """Ce qui sort d'un PDF ne doit jamais pouvoir faire tomber la chaine.
+
+    Rencontre le 2026-09-20 : le moissonnage est mort apres 200 articles sur
+    `UnicodeEncodeError: surrogates not allowed`. Une police de PDF avec une table de
+    caracteres incoherente produit des demi-paires de substitution, que Python accepte
+    en memoire mais qu'aucun encodeur UTF-8 n'accepte.
+    """
+
+    def test_les_demi_paires_de_substitution_sont_neutralisees(self) -> None:
+        from artifact_rot.fulltext import sanitize
+
+        hostile = "Donnees 𐀀 disponibles \udfff ici"
+        cleaned = sanitize(hostile)
+        cleaned.encode("utf-8")  # ne doit pas lever
+        assert "Donnees" in cleaned and "disponibles" in cleaned
+
+    def test_le_texte_normal_est_intact(self) -> None:
+        from artifact_rot.fulltext import sanitize
+
+        text = "Données disponibles à https://zenodo.org/records/1 — accès libre ✓"
+        assert sanitize(text) == text
+
+    def test_extraction_sur_texte_assaini(self) -> None:
+        from artifact_rot.fulltext import sanitize
+
+        text = sanitize("Code : https://github.com/labo/p \ud800 fin.")
+        links = extract_links(text, **PAPER)
+        assert any(link.host == "github.com" for link in links)

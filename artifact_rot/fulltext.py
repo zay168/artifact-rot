@@ -203,7 +203,7 @@ def read_pdf(payload: bytes) -> tuple[str, list[str]]:
                     urls.append(str(uri))
             except Exception:  # noqa: BLE001,S110 — une annotation illisible est ignoree
                 pass
-    return "\n".join(chunks), _dedupe_preserving(urls)
+    return sanitize("\n".join(chunks)), [sanitize(u) for u in _dedupe_preserving(urls)]
 
 
 _HREF = re.compile(r"""<a\b[^>]*\bhref\s*=\s*["']([^"']+)["']""", re.IGNORECASE)
@@ -211,7 +211,7 @@ _TAG = re.compile(r"<(script|style)\b.*?</\1>|<[^>]+>", re.IGNORECASE | re.DOTAL
 
 
 def read_html(payload: str) -> tuple[str, list[str]]:
-    urls = [u for u in _HREF.findall(payload) if u.startswith("http")]
+    urls = [sanitize(u) for u in _HREF.findall(payload) if u.startswith("http")]
     text = _TAG.sub(" ", payload)
     return _unescape(text), _dedupe_preserving(urls)
 
@@ -223,15 +223,37 @@ _EXT_LINK = re.compile(
 
 def read_jats(payload: str) -> tuple[str, list[str]]:
     """JATS : `<ext-link>` est le balisage editorial le plus explicite qui existe."""
-    urls = [u for u in _EXT_LINK.findall(payload) if u.startswith(("http", "doi:", "10."))]
+    urls = [
+        sanitize(u) for u in _EXT_LINK.findall(payload) if u.startswith(("http", "doi:", "10."))
+    ]
     text = _TAG.sub(" ", payload)
     return _unescape(text), _dedupe_preserving(urls)
+
+
+def sanitize(text: str) -> str:
+    """Rend un texte ecrivable en UTF-8, quoi qu'il contienne.
+
+    Mesure du 2026-09-20 : l'extraction PDF produit parfois des **demi-paires de
+    substitution** — des points de code UTF-16 isoles, que Python accepte en memoire
+    mais qu'aucun encodeur UTF-8 n'accepte. Le moissonnage est mort dessus apres
+    200 articles, sur `UnicodeEncodeError: surrogates not allowed`.
+
+    Ce n'est pas un cas exotique : un PDF est un format ou les polices declarent leurs
+    propres tables de caracteres, et une table incoherente produit exactement ca. Sur
+    40 000 articles, ce defaut aurait interrompu le run a un moment imprevisible — et
+    apres des heures de travail deja faites.
+
+    Meme principe que pour les URL hostiles : rien de ce qui sort d'un PDF ne doit
+    pouvoir faire tomber la chaine.
+    """
+    return text.encode("utf-8", "replace").decode("utf-8")
 
 
 _ENTITIES = {"&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'", "&nbsp;": " "}
 
 
 def _unescape(text: str) -> str:
+    text = sanitize(text)
     for k, v in _ENTITIES.items():
         text = text.replace(k, v)
     return re.sub(r"[ \t\r\f\v]+", " ", text)
