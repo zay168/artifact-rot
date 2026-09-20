@@ -52,9 +52,21 @@ trancher a posteriori. Voir docs/etat-de-lart.md §2.2.
 
 
 class Link(BaseModel):
-    """Un lien d'artefact extrait d'un article. Une ligne = une promesse faite par un article."""
+    """Un lien d'artefact extrait d'un article. Une ligne = une promesse faite par un article.
 
-    paper_doi: str
+    **Ecart assume au PLAN.md §5**, decide a E1 le 2026-09-20 : le plan donne
+    `paper_doi: str` comme cle. La mesure sur l'echantillon montre que 6,8 % des articles
+    tires n'ont pas de DOI dans OpenAlex, et que le manque est **fortement correle a
+    l'age** — 44 % en informatique 2010 contre 4 % en 2025. Filtrer sur la presence d'un
+    DOI aurait donc introduit un biais de selection portant precisement sur la variable
+    explicative principale du projet. La cle devient l'identifiant OpenAlex, stable et
+    universel sur l'echantillon ; le DOI reste porte quand il existe, parce que c'est lui
+    qui parle aux editeurs et aux lecteurs.
+    """
+
+    paper_id: str
+    """Identifiant OpenAlex (`W…`). Cle primaire : present sur 100 % de l'echantillon."""
+    paper_doi: str | None = None
     paper_year: int
     discipline: str
     publisher: str
@@ -72,7 +84,7 @@ class Link(BaseModel):
     @property
     def link_id(self) -> str:
         """Identifiant deterministe et stable entre runs."""
-        payload = f"{self.paper_doi}\x1f{self.normalized}\x1f{self.kind}"
+        payload = f"{self.paper_id}\x1f{self.normalized}\x1f{self.kind}"
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 

@@ -22,7 +22,7 @@ from artifact_rot.probe.http_generic import (
 def link(url: str) -> Link:
     n = canonicalize(url)
     return Link(
-        paper_doi="10.0/x",
+        paper_id="W0000000000",
         paper_year=2020,
         discipline="test",
         publisher="test",

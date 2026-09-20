@@ -206,7 +206,7 @@ def _load_restricted() -> list[ControlCase]:
 def _as_link(case: ControlCase) -> Link:
     normalized = canonicalize(case.url)
     return Link(
-        paper_doi="10.0000/control",
+        paper_id="W0000000001",
         paper_year=2026,
         discipline="control",
         publisher="control",

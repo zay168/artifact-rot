@@ -26,7 +26,7 @@ politiques ; un individu n'a pas de politique, il a un serveur qui est tombé.
 | Étape | État |
 |---|---|
 | E0 — veille et état de l'art | **fait** — [`docs/etat-de-lart.md`](docs/etat-de-lart.md) ; aucun observatoire continu équivalent |
-| E1 — échantillonnage stratifié figé | à faire |
+| E1 — échantillonnage stratifié figé | **passé** au 2026-09-20 : 40 000 articles, 20 strates, Jaccard 1,0 au rejeu ([`docs/echantillon.md`](docs/echantillon.md)) |
 | E2 — sondes et classification | **passé** au 2026-09-20 : 119/120, soit 0,9917 pour un seuil à 0,98. Réserve écrite : `restricted` est à 0,667 sur n = 3 ([`docs/jeu-de-controle.md`](docs/jeu-de-controle.md)) |
 | E3 — extraction depuis le texte intégral | à faire |
 | E4 — ordonnanceur 3 passes | à faire |

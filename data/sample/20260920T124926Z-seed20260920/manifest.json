@@ -1,0 +1,130 @@
+{
+  "created_at": "2026-09-20T12:52:53.158053+00:00",
+  "seed": 20260920,
+  "n_per_stratum": 2000,
+  "years": [
+    2010,
+    2014,
+    2018,
+    2022,
+    2025
+  ],
+  "disciplines": {
+    "medicine": "27",
+    "computer_science": "17",
+    "social_sciences": "33",
+    "physics_astronomy": "31"
+  },
+  "base_filters": [
+    "open_access.is_oa:true",
+    "has_fulltext:true",
+    "type:article"
+  ],
+  "select": "id,doi,publication_year,type,primary_location,best_oa_location,primary_topic,open_access,authorships",
+  "openalex_base": "https://api.openalex.org",
+  "strata": {
+    "medicine-2010": {
+      "filter": "publication_year:2010,open_access.is_oa:true,has_fulltext:true,type:article,primary_topic.field.id:fields/27",
+      "requested": 2000,
+      "obtained": 2000
+    },
+    "medicine-2014": {
+      "filter": "publication_year:2014,open_access.is_oa:true,has_fulltext:true,type:article,primary_topic.field.id:fields/27",
+      "requested": 2000,
+      "obtained": 2000
+    },
+    "medicine-2018": {
+      "filter": "publication_year:2018,open_access.is_oa:true,has_fulltext:true,type:article,primary_topic.field.id:fields/27",
+      "requested": 2000,
+      "obtained": 2000
+    },
+    "medicine-2022": {
+      "filter": "publication_year:2022,open_access.is_oa:true,has_fulltext:true,type:article,primary_topic.field.id:fields/27",
+      "requested": 2000,
+      "obtained": 2000
+    },
+    "medicine-2025": {
+      "filter": "publication_year:2025,open_access.is_oa:true,has_fulltext:true,type:article,primary_topic.field.id:fields/27",
+      "requested": 2000,
+      "obtained": 2000
+    },
+    "computer_science-2010": {
+      "filter": "publication_year:2010,open_access.is_oa:true,has_fulltext:true,type:article,primary_topic.field.id:fields/17",
+      "requested": 2000,
+      "obtained": 2000
+    },
+    "computer_science-2014": {
+      "filter": "publication_year:2014,open_access.is_oa:true,has_fulltext:true,type:article,primary_topic.field.id:fields/17",
+      "requested": 2000,
+      "obtained": 2000
+    },
+    "computer_science-2018": {
+      "filter": "publication_year:2018,open_access.is_oa:true,has_fulltext:true,type:article,primary_topic.field.id:fields/17",
+      "requested": 2000,
+      "obtained": 2000
+    },
+    "computer_science-2022": {
+      "filter": "publication_year:2022,open_access.is_oa:true,has_fulltext:true,type:article,primary_topic.field.id:fields/17",
+      "requested": 2000,
+      "obtained": 2000
+    },
+    "computer_science-2025": {
+      "filter": "publication_year:2025,open_access.is_oa:true,has_fulltext:true,type:article,primary_topic.field.id:fields/17",
+      "requested": 2000,
+      "obtained": 2000
+    },
+    "social_sciences-2010": {
+      "filter": "publication_year:2010,open_access.is_oa:true,has_fulltext:true,type:article,primary_topic.field.id:fields/33",
+      "requested": 2000,
+      "obtained": 2000
+    },
+    "social_sciences-2014": {
+      "filter": "publication_year:2014,open_access.is_oa:true,has_fulltext:true,type:article,primary_topic.field.id:fields/33",
+      "requested": 2000,
+      "obtained": 2000
+    },
+    "social_sciences-2018": {
+      "filter": "publication_year:2018,open_access.is_oa:true,has_fulltext:true,type:article,primary_topic.field.id:fields/33",
+      "requested": 2000,
+      "obtained": 2000
+    },
+    "social_sciences-2022": {
+      "filter": "publication_year:2022,open_access.is_oa:true,has_fulltext:true,type:article,primary_topic.field.id:fields/33",
+      "requested": 2000,
+      "obtained": 2000
+    },
+    "social_sciences-2025": {
+      "filter": "publication_year:2025,open_access.is_oa:true,has_fulltext:true,type:article,primary_topic.field.id:fields/33",
+      "requested": 2000,
+      "obtained": 2000
+    },
+    "physics_astronomy-2010": {
+      "filter": "publication_year:2010,open_access.is_oa:true,has_fulltext:true,type:article,primary_topic.field.id:fields/31",
+      "requested": 2000,
+      "obtained": 2000
+    },
+    "physics_astronomy-2014": {
+      "filter": "publication_year:2014,open_access.is_oa:true,has_fulltext:true,type:article,primary_topic.field.id:fields/31",
+      "requested": 2000,
+      "obtained": 2000
+    },
+    "physics_astronomy-2018": {
+      "filter": "publication_year:2018,open_access.is_oa:true,has_fulltext:true,type:article,primary_topic.field.id:fields/31",
+      "requested": 2000,
+      "obtained": 2000
+    },
+    "physics_astronomy-2022": {
+      "filter": "publication_year:2022,open_access.is_oa:true,has_fulltext:true,type:article,primary_topic.field.id:fields/31",
+      "requested": 2000,
+      "obtained": 2000
+    },
+    "physics_astronomy-2025": {
+      "filter": "publication_year:2025,open_access.is_oa:true,has_fulltext:true,type:article,primary_topic.field.id:fields/31",
+      "requested": 2000,
+      "obtained": 2000
+    }
+  },
+  "n_rows": 40000,
+  "sha256": "e47d965813e232f975de5991818d08f56b90be9f43b7492b5d299be53e120be1",
+  "note": "L'echantillon officiel est ce fichier, pas la requete. OpenAlex indexe en continu et son indicateur has_fulltext evolue : rejouer la requete plus tard peut donner un autre tirage sans qu'aucun bug ne soit en cause."
+}
