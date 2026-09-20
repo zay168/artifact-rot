@@ -62,7 +62,7 @@ Si un hébergeur demande l'arrêt, on s'arrête et on le dit dans le rapport.
 uv venv --python 3.12
 uv pip install -e ".[dev]"
 
-uv run pytest                                    # 72 tests hors ligne
+uv run pytest                                    # 154 tests hors ligne
 
 export ARTIFACT_ROT_CONTACT="vous@exemple.org"
 export GITHUB_TOKEN="ghp_..."                    # optionnel, 60 req/h -> 5000 req/h
