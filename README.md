@@ -31,7 +31,7 @@ politiques ; un individu n'a pas de politique, il a un serveur qui est tombé.
 | E3 — extraction depuis le texte intégral | **mesuré** au 2026-09-20 : rappel textuel 0,495 ; l’extraction prend l’union texte + balisage ([`docs/extraction.md`](docs/extraction.md)). Cache à reconstruire avant E5 |
 | E4 — ordonnanceur 3 passes | **passé** au 2026-09-20 : passe à blanc complète 2 363/2 363, aucun quota dépassé ([`docs/ordonnanceur.md`](docs/ordonnanceur.md)) |
 | E5 — run officiel S1 | **passe 1 lancée le 2026-09-21.** 7 829 liens, 3 passes espacées de 10 jours. Verdict H1 attendu vers le 2026-10-11 |
-| E6 — survie, demi-vie, verdict H1 | à faire |
+| E6 — survie, demi-vie, verdict H1 | **analyse écrite et validée le 2026-09-21, avant les chiffres** ([`docs/analyse.md`](docs/analyse.md)). Reste `report.py`, qui vient après le verdict |
 | E7 — décision | à faire |
 
 Aucune étape ne commence avant que la précédente passe son critère (PLAN.md §7).
@@ -62,7 +62,7 @@ Si un hébergeur demande l'arrêt, on s'arrête et on le dit dans le rapport.
 uv venv --python 3.12
 uv pip install -e ".[dev]"
 
-uv run pytest                                    # 197 tests hors ligne
+uv run pytest                                    # 251 tests hors ligne
 
 export ARTIFACT_ROT_CONTACT="vous@exemple.org"
 export GITHUB_TOKEN="ghp_..."                    # optionnel, 60 req/h -> 5000 req/h
