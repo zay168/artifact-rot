@@ -30,7 +30,7 @@ politiques ; un individu n'a pas de politique, il a un serveur qui est tombé.
 | E2 — sondes et classification | **passé** au 2026-09-20 : 139/141, soit 0,9858 pour un seuil à 0,98. `restricted` à 24 cas dont 15 non circulaires ([`docs/jeu-de-controle.md`](docs/jeu-de-controle.md)) |
 | E3 — extraction depuis le texte intégral | **mesuré** au 2026-09-20 : rappel textuel 0,495 ; l’extraction prend l’union texte + balisage ([`docs/extraction.md`](docs/extraction.md)). Cache à reconstruire avant E5 |
 | E4 — ordonnanceur 3 passes | **passé** au 2026-09-20 : passe à blanc complète 2 363/2 363, aucun quota dépassé ([`docs/ordonnanceur.md`](docs/ordonnanceur.md)) |
-| E5 — run officiel S1 | à faire |
+| E5 — run officiel S1 | **passe 1 lancée le 2026-09-21.** 7 829 liens, 3 passes espacées de 10 jours. Verdict H1 attendu vers le 2026-10-11 |
 | E6 — survie, demi-vie, verdict H1 | à faire |
 | E7 — décision | à faire |
 
