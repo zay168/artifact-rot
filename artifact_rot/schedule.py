@@ -40,13 +40,18 @@ import json
 import re
 import sqlite3
 import sys
-import time
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import closing
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import httpx
+
 from .config import ConfigError, Settings
+from .extract.normalize import host_of
+from .limiter import HostRateLimiter
 from .models import Link, Probe, Status
 from .probe import build_client, default_registry
 from .resolve import resolve
@@ -75,16 +80,34 @@ HOST_BUDGETS: dict[str, int] = {
     "api.github.com": 2000,
     "gitlab.com": 300,
     "api.bitbucket.org": 500,
-    "zenodo.org": 300,
-    "api.osf.io": 300,
-    "api.figshare.com": 300,
-    "doi.org": 1000,
-    "archive.softwareheritage.org": 100,
-    "_default": 200,
+    # Zenodo documente 60 requetes/minute pour un client anonyme, et son equipe signale
+    # publiquement bloquer chaque jour des clients trop agressifs. On prend le quart.
+    "zenodo.org": 900,
+    "api.osf.io": 600,
+    "api.figshare.com": 600,
+    "doi.org": 1800,
+    "archive.softwareheritage.org": 120,
+    "eutils.ncbi.nlm.nih.gov": 3600,
+    "_default": 600,
 }
 """Le budget par defaut s'applique a tout hote non liste — pages personnelles, depots
-institutionnels. 200 requetes par heure sur un serveur de laboratoire est deja
-genereux."""
+institutionnels.
+
+Releve de 200 a 600 par heure, soit une requete toutes les six secondes. Un serveur qui
+ne supporte pas une requete toutes les six secondes ne supporte pas non plus un lecteur
+humain qui parcourt un site. Le debit reste tres en dessous de ce qu'un navigateur
+ordinaire produit en chargeant une seule page moderne.
+
+Ce qui change vraiment la duree d'une passe n'est pas ce chiffre, c'est l'execution
+concurrente entre hotes (`limiter.py`) : la file porte 2 230 hotes distincts, et rien
+n'obligeait a les servir l'un apres l'autre."""
+
+MAX_WORKERS = 16
+"""Threads de sondage simultanes.
+
+Le nombre importe peu au-dela d'une dizaine : ce qui limite, c'est le debit par hote,
+pas le parallelisme. Seize suffit a couvrir la latence reseau sans jamais qu'un hote
+recoive deux requetes rapprochees — le limiteur s'en charge, hote par hote."""
 
 
 SCHEMA = """
@@ -121,7 +144,9 @@ CREATE INDEX IF NOT EXISTS idx_links_host ON links(host);
 
 def connect(path: Path = DB_PATH) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
+    # check_same_thread=False : les ecritures viennent du pool de sondage, toujours
+    # sous le verrou `writes` de `run_pass`. SQLite n'est jamais touche sans lui.
+    conn = sqlite3.connect(path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     # WAL : une lecture (`status`) reste possible pendant qu'une passe ecrit.
     conn.execute("PRAGMA journal_mode=WAL")
@@ -142,6 +167,18 @@ ARTIFACT_HOSTS_IN_REFS = {
 }
 
 
+ARTIFACT_KINDS = {"code_repo", "data_repo", "dataset_doi"}
+"""Un lien de bibliographie est conserve si son **type** est un artefact, meme quand son
+hote ne l'est pas.
+
+Corrige le 2026-09-21 apres audit : neuf DOI Zenodo cites en bibliographie
+(`https://doi.org/10.5281/zenodo.1070901`) etaient ecartes, parce que le filtre testait
+l'hote — `doi.org` — alors que c'est le prefixe du DOI qui designe un depot de donnees.
+
+C'est exactement le cas que metacheck a mesure (issue #411) et que l'on voulait garder :
+3 % des articles ne citent leur depot que dans leur bibliographie. Les perdre par un
+test sur le mauvais champ aurait ete une erreur silencieuse."""
+
 CITATION_HOSTS = {
     "pubmed.ncbi.nlm.nih.gov",
     "scholar.google.com",
@@ -159,6 +196,9 @@ CITATION_HOSTS = {
     "medrxiv.org",
     "ssrn.com",
     "hal.science",
+    "inspirehep.net",
+    "refhub.elsevier.com",
+    "linkinghub.elsevier.com",
     "mailto",
 }
 """Infrastructures bibliographiques. Un lien PubMed dans un article est une citation, pas
@@ -175,10 +215,31 @@ artefacts annonces, pas celle de la litterature.
 ce ne sont pas des URL, et il n'est pas question de les toucher."""
 
 DATA_PATHS_TO_KEEP = re.compile(
-    r"(?i)/(nuccore|protein|sra|geo|bioproject|biosample|gds|pmc|clinvar|dbvar|gap)\b"
+    r"(?i)/(nuccore|protein|sra|geo|bioproject|biosample|gds|clinvar|dbvar|gap|"
+    r"genbank|assembly|taxonomy|gene|structure)\b"
 )
 """Exception a `CITATION_HOSTS` : le NCBI heberge aussi de vraies donnees. Un lien vers
-`ncbi.nlm.nih.gov/nuccore/...` est un artefact, pas une citation."""
+`ncbi.nlm.nih.gov/nuccore/...` est un artefact, pas une citation.
+
+`pmc` a ete **retire** de cette liste le 2026-09-21 : un lien PMC designe un article en
+texte integral, pas un jeu de donnees. C'est une citation."""
+
+CITATION_PATHS = re.compile(
+    r"(?i)(/pubmed(/|\?|$)|/entrez/query\.fcgi|/entrez/eutils|/articles/PMC\d+"
+    r"|/pmc/articles/|/books/NBK\d+)"
+)
+"""Chemins de citation, quel que soit l'hote.
+
+Decouvert le 2026-09-21 en cherchant pourquoi le NCBI dominait la duree d'une passe :
+**576 des 655 liens NCBI etaient des citations PubMed** sous une forme d'URL que le
+filtre par hote ne voyait pas — `ncbi.nlm.nih.gov/pubmed/12345` et
+`ncbi.nlm.nih.gov/entrez/query.fcgi?db=PubMed&...`, et non
+`pubmed.ncbi.nlm.nih.gov/12345`.
+
+Le meme hote sert donc des citations et des donnees, et seule la forme du chemin les
+separe. Filtrer par hote seul laissait passer des centaines de requetes inutiles chez
+le NIH — et gonflait le denominateur du chiffre publie avec une population qui ne meurt
+pas."""
 
 
 def should_probe(row: dict) -> tuple[bool, str]:
@@ -214,18 +275,123 @@ def should_probe(row: dict) -> tuple[bool, str]:
         return False, "citation_doi"
     if host in CITATION_HOSTS and not DATA_PATHS_TO_KEEP.search(url):
         return False, "hote_bibliographique"
-    if row.get("source") == "references" and host not in ARTIFACT_HOSTS_IN_REFS:
+    if CITATION_PATHS.search(url) and not DATA_PATHS_TO_KEEP.search(url):
+        return False, "chemin_bibliographique"
+    if (
+        row.get("source") == "references"
+        and host not in ARTIFACT_HOSTS_IN_REFS
+        and kind not in ARTIFACT_KINDS
+    ):
         return False, "reference_non_artefact"
     return True, "probe"
+
+
+CHROME_MIN_PAPERS = 4
+CHROME_MIN_DISCIPLINES = 2
+CHROME_MIN_PAPERS_SAME_DISCIPLINE = 8
+FURNITURE_HOST_MIN_URLS = 20
+FURNITURE_HOST_MIN_URLS_PER_PAPER = 5.0
+FURNITURE_HOST_MAX_PAPERS = 50
+"""Garde-fou ajoute apres une premiere version trop large.
+
+Sans lui, la regle attrapait `doi.org` : douze mille URL distinctes, donc un ratio
+eleve — sauf qu'elles viennent de onze cents articles differents, chacun citant une
+douzaine de references. Ce n'est pas du mobilier, c'est un agregateur.
+
+Le signal du mobilier n'est pas « beaucoup d'URL » mais **beaucoup d'URL venues de
+peu d'articles** : une poignee de bibliographies ou de menus, repliquee."""
+"""Seuil pour le mobilier d'un site mono-disciplinaire.
+
+La premiere regle exigeait deux disciplines, et laissait donc passer le menu d'une
+revue specialisee : `frontiersin.org/Pharmacology/editorialboard`,
+`jstage.jst.go.jp/static/pages/...` reviennent dans des dizaines d'articles, tous de la
+meme discipline.
+
+Huit articles distincts est un seuil deliberement haut : dans un echantillon de 2 000
+articles tires au hasard sur quinze ans, un jeu de donnees reellement reutilise par huit
+d'entre eux serait remarquable. Un pied de page de revue y arrive sans effort."""
+
+
+def find_site_furniture(rows: list[dict]) -> set[str]:
+    """URL qui reviennent dans beaucoup d'articles sans rapport entre eux.
+
+    Une regle, pas une liste noire : **une URL citee par au moins quatre articles de
+    deux disciplines differentes, sur un hote qui n'est pas un depot d'artefacts, est du
+    mobilier de site.** Un jeu de donnees peut etre reutilise ; il ne l'est pas par de la
+    physique et de la sociologie a la fois, via un hote quelconque.
+
+    Mesure du 2026-09-21 : 88 URL, 871 liens, 11 % de la file. Ce qu'elle attrape :
+    `browsehappy.com` (« mettez a jour votre navigateur »), `home.cern`,
+    `commission.europa.eu`, `stats.uptimerobot.com` — la page de statut d'un service.
+    Aucun de ces liens n'est un artefact de recherche.
+
+    L'avantage d'une regle sur une liste noire est qu'elle continue de fonctionner sur
+    le prochain corpus, avec le mobilier d'autres sites que ceux deja rencontres.
+    """
+    from .extract.links import ARTIFACT_HOSTS
+
+    papers: dict[str, set[str]] = collections.defaultdict(set)
+    disciplines: dict[str, set[str]] = collections.defaultdict(set)
+    host_urls: dict[str, set[str]] = collections.defaultdict(set)
+    host_papers: dict[str, set[str]] = collections.defaultdict(set)
+    for row in rows:
+        url = row.get("normalized", "")
+        paper = row.get("paper_id", "")
+        papers[url].add(paper)
+        disciplines[url].add(row.get("discipline", ""))
+        host = host_of(url)
+        host_urls[host].add(url)
+        host_papers[host].add(paper)
+
+    # Regle par hote : combien d'URL distinctes un hote recoit-il par article ?
+    #
+    # Mesure du 2026-09-21, et elle separe nettement deux populations :
+    #
+    #   github.com        50 URL / 110 articles = 0,5 URL par article
+    #   zenodo.org        15 URL /  11 articles = 1,4
+    #   frontiersin.org   96 URL /  17 articles = 5,6
+    #   jstage.jst.go.jp 118 URL /   7 articles = 16,9
+    #   inspirehep.net   398 URL /   8 articles = 49,8
+    #
+    # Un depot d'artefacts recoit environ un lien par article : chaque equipe y depose
+    # sa chose. Un site dont on a aspire le menu ou l'appareil de references en donne
+    # des dizaines, tous venus d'une poignee d'articles.
+    #
+    # C'est une regle sur la **forme de la distribution**, pas sur des noms de domaine :
+    # elle vaudra encore sur un corpus ou l'on n'a jamais vu ces hotes-la.
+    furniture_hosts = {
+        host
+        for host, urls in host_urls.items()
+        if len(urls) >= FURNITURE_HOST_MIN_URLS
+        and len(host_papers[host]) <= FURNITURE_HOST_MAX_PAPERS
+        and len(urls) / max(1, len(host_papers[host])) >= FURNITURE_HOST_MIN_URLS_PER_PAPER
+        and host not in ARTIFACT_HOSTS
+    }
+
+    def is_furniture(url: str, ps: set[str]) -> bool:
+        if host_of(url) in ARTIFACT_HOSTS:
+            return False
+        if host_of(url) in furniture_hosts:
+            return True
+        if len(ps) >= CHROME_MIN_PAPERS_SAME_DISCIPLINE:
+            return True
+        return len(ps) >= CHROME_MIN_PAPERS and len(disciplines[url]) >= CHROME_MIN_DISCIPLINES
+
+    return {url for url, ps in papers.items() if is_furniture(url, ps)}
 
 
 def load_links(conn: sqlite3.Connection, path: Path) -> dict[str, int]:
     """Charge des liens dans la file. Idempotent : recharger n'efface aucune sonde."""
     now = datetime.now(UTC).isoformat()
     counts: collections.Counter[str] = collections.Counter()
+    rows_all = [json.loads(line) for line in path.open(encoding="utf-8")]
+    furniture = find_site_furniture(rows_all)
+
     with conn:
-        for line in path.open(encoding="utf-8"):
-            row = json.loads(line)
+        for row in rows_all:
+            if row.get("normalized") in furniture:
+                counts["mobilier_de_site"] += 1
+                continue
             keep, why = should_probe(row)
             counts[why] += 1
             if not keep:
@@ -403,6 +569,14 @@ def run_pass(
         links = links[:limit]
     estimate = plan(links)
 
+    # Deduplication par URL : deux articles qui citent le meme depot posent la meme
+    # question. La sonder deux fois le meme jour donne la meme reponse et double le
+    # trafic pour rien. Mesure du 2026-09-21 : 7 829 liens pour 6 763 URL distinctes,
+    # soit 14 % de requetes evitees — et 14 % de derangement en moins.
+    by_url: dict[str, list[DueLink]] = collections.defaultdict(list)
+    for item in links:
+        by_url[item.payload["normalized"]].append(item)
+
     pass_id = f"{datetime.now(UTC):%Y%m%dT%H%M%SZ}-{'dry' if dry_run else 'run'}"
     with conn:
         conn.execute(
@@ -412,69 +586,82 @@ def run_pass(
 
     spent: collections.Counter[str] = collections.Counter()
     statuses: collections.Counter[str] = collections.Counter()
-    last_hit: dict[str, float] = {}
-    n = 0
-
+    counters = threading.Lock()
+    writes = threading.Lock()
+    limiter = HostRateLimiter(lambda host: 3600.0 / budget_of(host))
     registry = default_registry()
-    client = None if dry_run else build_client(settings)
+    n_probed = 0
+    n_requests = 0
 
-    try:
-        for item in links:
-            host = api_host_for(item.host)
+    def probe_one(url_group: list[DueLink], client: httpx.Client | None) -> None:
+        nonlocal n_probed, n_requests
+        first = url_group[0]
+        host = api_host_for(first.host)
 
-            # Cadence, pas plafond : on espace les requetes pour tenir le debit horaire
-            # de cet hote, et la passe dure le temps qu'il faut.
-            if not dry_run:
-                interval = 3600.0 / budget_of(host)
-                since = time.monotonic() - last_hit.get(host, float("-inf"))
-                if since < interval:
-                    time.sleep(interval - since)
-                last_hit[host] = time.monotonic()
+        if dry_run:
+            status, method, reason, evidence = (
+                Status.UNKNOWN,
+                "api",
+                "dry_run",
+                {"planned_host": host},
+            )
+        else:
+            limiter.acquire(host)
+            link = Link.model_validate(first.payload)
+            result = registry.check(client, link, settings)
+            status, method, reason, evidence = (
+                result.status,
+                result.method,
+                result.reason,
+                result.evidence,
+            )
 
-            if dry_run:
-                status, method, reason, evidence = (
-                    Status.UNKNOWN,
-                    "api",
-                    "dry_run",
-                    {"planned_host": host},
-                )
-            else:
-                link = Link.model_validate(item.payload)
-                result = registry.check(client, link, settings)
-                status, method, reason, evidence = (
-                    result.status,
-                    result.method,
-                    result.reason,
-                    result.evidence,
-                )
-
+        with counters:
             spent[host] += 1
-            statuses[status.value] += 1
-            n += 1
+            n_requests += 1
+            statuses[status.value] += len(url_group)
+            n_probed += len(url_group)
 
-            if not dry_run:
-                _record(conn, item, status, method, reason, evidence)
+        if not dry_run:
+            # Le meme resultat vaut pour tous les liens qui portent cette URL : c'est
+            # la meme ressource, sondee au meme instant, avec la meme preuve.
+            with writes:
+                for item in url_group:
+                    _record(conn, item, status, method, reason, evidence)
+
+    client = None if dry_run else build_client(settings)
+    try:
+        if dry_run:
+            for group in by_url.values():
+                probe_one(group, None)
+        else:
+            with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+                futures = [pool.submit(probe_one, g, client) for g in by_url.values()]
+                for future in as_completed(futures):
+                    future.result()
     finally:
         if client is not None:
             client.close()
         with conn:
             conn.execute(
                 "UPDATE passes SET finished_at=?, n_probed=? WHERE pass_id=?",
-                (datetime.now(UTC).isoformat(), n, pass_id),
+                (datetime.now(UTC).isoformat(), n_probed, pass_id),
             )
 
     return {
         "pass_id": pass_id,
         "dry_run": dry_run,
         "n_due": len(links),
-        "n_probed": n,
+        "n_distinct_urls": len(by_url),
+        "n_probed": n_probed,
+        "n_requests": n_requests,
         "statuses": dict(statuses),
         "spent_per_host": dict(spent),
         "estimate": estimate,
-        # Le debit est tenu par construction (espacement avant chaque requete). Ce
-        # controle verifie qu'aucun lien n'a ete abandonne en silence : `n_probed`
-        # doit couvrir tout ce qui etait du.
-        "all_due_probed": n == len(links),
+        # Le debit par hote est tenu par construction (le limiteur). Ce controle verifie
+        # qu'aucun lien n'a ete abandonne en silence : `n_probed` doit couvrir tout ce
+        # qui etait du.
+        "all_due_probed": n_probed == len(links),
     }
 
 
@@ -614,6 +801,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  statuts     : {report['statuses']}")
             couverture = "complete" if report["all_due_probed"] else "INCOMPLETE"
             print(f"  couverture  : {couverture} ({report['n_probed']}/{report['n_due']})")
+            print(
+                f"  requetes    : {report['n_requests']} pour {report['n_due']} liens "
+                f"({report['n_distinct_urls']} URL distinctes)"
+            )
             print(f"  duree estimee : {report['estimate']['estimated_hours']} h")
             for host, n in sorted(report["spent_per_host"].items(), key=lambda kv: -kv[1])[:10]:
                 print(f"      {host:<32} {n:>6} req, debit {budget_of(host)}/h")

@@ -98,6 +98,26 @@ _TRACKING_PARAMS = {"utm_source", "utm_medium", "utm_campaign", "utm_term", "utm
 _TRAILING_PUNCT = ".,;:)]}>\"'"
 
 
+_ENTITY_IN_URL = {"&amp;": "&", "&#38;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"'}
+
+
+def _decode_entities(url: str) -> str:
+    """Decode les entites HTML restees dans une URL.
+
+    Observe le 2026-09-21 sur le corpus : des centaines d'URL de la forme
+    `…query.fcgi?cmd=Retrieve&amp;db=PubMed&amp;dopt=Abstract`. L'entite vient du HTML
+    ou du PDF d'origine et traverse l'extraction telle quelle.
+
+    Sondee ainsi, l'URL n'est pas celle que l'auteur a ecrite : le serveur recoit un
+    parametre nomme `amp;db` et peut repondre n'importe quoi. Une URL mal decodee
+    produit donc un statut faux — et, dans le sens qui arrange la these du projet, un
+    faux lien mort.
+    """
+    for entity, char in _ENTITY_IN_URL.items():
+        url = url.replace(entity, char)
+    return url
+
+
 def _safe_split(url: str):
     """`urlsplit` leve sur certaines URL reelles — un `[` isole suffit (« Invalid IPv6
     URL »). Rencontre le 2026-09-20 sur le corpus reel, ou il a fait tomber le calcul de
@@ -127,6 +147,7 @@ def canonicalize(raw: str) -> str:
     tracking, slash final).
     """
     url = raw.strip().rstrip(_TRAILING_PUNCT).strip()
+    url = _decode_entities(url)
     url = repair_spaced_hosts(url)
     if url.lower().startswith("doi:"):
         url = "https://doi.org/" + url[4:].strip()

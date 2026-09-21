@@ -216,13 +216,19 @@ class TestBudgets:
         une passe interdite."""
         rows = [
             link_row(
-                f"l{i}", host="labo.fr", normalized=f"https://labo.fr/{i}", kind="generic_url"
+                f"l{i}",
+                host="labo.fr",
+                normalized=f"https://labo.fr/{i}",
+                kind="generic_url",
+                paper_id=f"W{i}",
             )
             for i in range(500)
         ]
         load_links(conn, write(tmp_path, rows))
         estimate = plan(due(conn, SETTINGS, NOW))
-        assert estimate["estimated_hours"] == pytest.approx(2.5, abs=0.01)
+        expected = 500 / budget_of("labo.fr")
+        assert estimate["estimated_hours"] == pytest.approx(expected, abs=0.01)
+        assert estimate["hosts_over_hourly_budget"] or expected <= 1
 
 
 class TestAlternanceDesHotes:
@@ -255,3 +261,123 @@ class TestAlternanceDesHotes:
         got = due(conn, SETTINGS, NOW)
         assert len(got) == 20
         assert len({item.link_id for item in got}) == 20
+
+
+class TestMobilierDeSite:
+    """Une regle, pas une liste noire — elle doit continuer a fonctionner sur un autre
+    corpus, avec le mobilier d'autres sites que ceux deja rencontres."""
+
+    def test_url_repetee_entre_disciplines_est_ecartee(self, conn, tmp_path: Path) -> None:
+        rows = [
+            link_row(
+                f"c{i}",
+                normalized="https://browsehappy.com/",
+                host="browsehappy.com",
+                kind="generic_url",
+                paper_id=f"W{i}",
+                discipline=("medicine", "physics_astronomy", "social_sciences")[i % 3],
+            )
+            for i in range(6)
+        ]
+        counts = load_links(conn, write(tmp_path, rows))
+        assert counts.get("mobilier_de_site") == 6
+        assert due(conn, SETTINGS, NOW) == []
+
+    def test_un_depot_repete_est_conserve(self, conn, tmp_path: Path) -> None:
+        """Un jeu de donnees peut etre reutilise par plusieurs equipes. La regle ne doit
+        pas le confondre avec du mobilier — d'ou l'exemption des hotes d'artefacts."""
+        rows = [
+            link_row(
+                f"z{i}",
+                normalized="https://zenodo.org/records/3509134",
+                host="zenodo.org",
+                kind="data_repo",
+                paper_id=f"W{i}",
+                discipline=("medicine", "physics_astronomy", "social_sciences")[i % 3],
+            )
+            for i in range(6)
+        ]
+        load_links(conn, write(tmp_path, rows))
+        assert len(due(conn, SETTINGS, NOW)) == 6
+
+    def test_une_url_d_une_seule_discipline_est_conservee(self, conn, tmp_path: Path) -> None:
+        rows = [
+            link_row(
+                f"d{i}",
+                normalized="https://labo.fr/donnees",
+                host="labo.fr",
+                kind="generic_url",
+                paper_id=f"W{i}",
+                discipline="medicine",
+            )
+            for i in range(6)
+        ]
+        load_links(conn, write(tmp_path, rows))
+        assert len(due(conn, SETTINGS, NOW)) == 6
+
+
+class TestLimiteurDeDebit:
+    def test_un_hote_est_espace(self) -> None:
+        import time
+
+        from artifact_rot.limiter import HostRateLimiter
+
+        limiter = HostRateLimiter(lambda _host: 0.05)
+        start = time.monotonic()
+        for _ in range(4):
+            limiter.acquire("a.fr")
+        assert time.monotonic() - start >= 0.14
+
+    def test_deux_hotes_ne_s_attendent_pas(self) -> None:
+        """Le point de toute l'optimisation : patienter pour l'hote A ne doit rien
+        couter a l'hote B."""
+        import time
+
+        from artifact_rot.limiter import HostRateLimiter
+
+        limiter = HostRateLimiter(lambda _host: 0.2)
+        limiter.acquire("a.fr")
+        start = time.monotonic()
+        limiter.acquire("b.fr")
+        assert time.monotonic() - start < 0.05
+
+
+class TestDepotCiteEnBibliographie:
+    """3 % des articles ne citent leur depot que dans leur bibliographie (metacheck
+    issue #411). Les perdre par un test sur le mauvais champ serait silencieux."""
+
+    def test_doi_zenodo_en_bibliographie_conserve(self) -> None:
+        keep, _ = should_probe(
+            link_row(
+                "a",
+                source="references",
+                host="doi.org",
+                kind="data_repo",
+                normalized="https://doi.org/10.5281/zenodo.1070901",
+            )
+        )
+        assert keep
+
+    def test_doi_de_jeu_de_donnees_en_bibliographie_conserve(self) -> None:
+        keep, _ = should_probe(
+            link_row(
+                "a",
+                source="references",
+                host="doi.org",
+                kind="dataset_doi",
+                normalized="https://doi.org/10.6084/m9.figshare.1",
+            )
+        )
+        assert keep
+
+    def test_doi_d_article_en_bibliographie_ecarte(self) -> None:
+        keep, why = should_probe(
+            link_row(
+                "a",
+                source="references",
+                host="doi.org",
+                kind="citation_doi",
+                normalized="https://doi.org/10.1371/journal.pone.1",
+            )
+        )
+        assert not keep and why == "citation_doi"
