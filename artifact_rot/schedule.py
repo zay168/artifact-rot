@@ -102,12 +102,18 @@ Ce qui change vraiment la duree d'une passe n'est pas ce chiffre, c'est l'execut
 concurrente entre hotes (`limiter.py`) : la file porte 2 230 hotes distincts, et rien
 n'obligeait a les servir l'un apres l'autre."""
 
-MAX_WORKERS = 16
+MAX_WORKERS = 48
 """Threads de sondage simultanes.
 
-Le nombre importe peu au-dela d'une dizaine : ce qui limite, c'est le debit par hote,
-pas le parallelisme. Seize suffit a couvrir la latence reseau sans jamais qu'un hote
-recoive deux requetes rapprochees — le limiteur s'en charge, hote par hote."""
+Le limiteur protege chaque hote independamment : un thread de plus ne fait jamais
+arriver deux requetes rapprochees chez le meme serveur. Ce que le parallelisme couvre,
+c'est la **latence** — un serveur lent, un delai d'attente de douze secondes.
+
+Mesure du 2026-09-21 : a seize threads, 300 liens en 3 min 41, soit 1,4 par seconde.
+Le facteur limitant n'etait plus aucun hote mais le nombre de threads face a la latence.
+Avec 2 153 hotes distincts dans la file, quarante-huit connexions simultanees restent
+tres en dessous de ce qu'un navigateur ouvre en chargeant une page moderne, et aucune
+ne vise deux fois le meme serveur."""
 
 
 SCHEMA = """

@@ -48,8 +48,16 @@ class Settings:
     """
 
     timeout_s: float = 12.0
-    max_concurrency: int = 4
-    """Volontairement bas. Le cout du projet est le temps calendaire (§8), pas le debit."""
+    max_concurrency: int = 64
+    """Connexions HTTP simultanees du client.
+
+    **Ne regle pas la politesse** — c'est le limiteur par hote (`limiter.py`) qui s'en
+    charge, et lui seul. Ce nombre ne fait que plafonner le pool de connexions.
+
+    Il valait 4, herite d'une epoque ou le sondage etait sequentiel. Une fois le pool de
+    threads en place, ce 4 annulait tout le parallelisme en silence : quarante-huit
+    threads se partageaient quatre connexions, et le debit restait identique a celui de
+    seize threads. Un plafond cache est pire qu'un plafond assume."""
 
     per_host_delay_s: float = 1.0
     respect_robots: bool = True
