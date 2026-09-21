@@ -302,6 +302,33 @@ def due(conn: sqlite3.Connection, settings: Settings, now: datetime | None = Non
                 next_attempt=row["n_probes"] + 1,
             )
         )
+    return _interleave_by_host(out)
+
+
+def _interleave_by_host(links: list[DueLink]) -> list[DueLink]:
+    """Alterne les hotes en tourniquet.
+
+    Sans cela, les 875 liens `ncbi.nlm.nih.gov` se suivent, et comme chaque requete
+    attend l'intervalle de debit de son hote, la passe dure la **somme** des temps par
+    hote. En alternant, on attend chez un hote pendant qu'on interroge les autres, et
+    la passe dure le **maximum** — de plusieurs jours a quelques heures.
+
+    Meme politesse, meme nombre de requetes, meme debit par hote. Seul l'ordre change.
+    """
+    by_host: dict[str, list[DueLink]] = collections.defaultdict(list)
+    for link in links:
+        by_host[api_host_for(link.host)].append(link)
+
+    out: list[DueLink] = []
+    queues = list(by_host.values())
+    index = 0
+    while queues:
+        index %= len(queues)
+        out.append(queues[index].pop())
+        if not queues[index]:
+            queues.pop(index)
+        else:
+            index += 1
     return out
 
 

@@ -38,7 +38,7 @@ from .extract.links import (
     is_artifact_link,
     iter_raw_links,
 )
-from .extract.normalize import canonicalize
+from .extract.normalize import canonicalize, host_of
 from .fulltext import Document, fetch_document, fetch_locations, load, save
 from .sample import latest_sample_dir
 
@@ -240,6 +240,9 @@ def links_of(rows: list[dict]) -> list[dict]:
             discipline=row["discipline"],
             publisher=row["publisher"],
             structured_urls=doc.structured_urls,
+            # L'habillage de site n'est un probleme que pour le HTML : les annotations
+            # d'un PDF appartiennent au document.
+            chrome_host=host_of(doc.source_url) if doc.kind == "html" else None,
         )
         for link in links:
             out.append(link.model_dump() | {"link_id": link.link_id, "stratum": row["stratum"]})

@@ -223,3 +223,35 @@ class TestBudgets:
         load_links(conn, write(tmp_path, rows))
         estimate = plan(due(conn, SETTINGS, NOW))
         assert estimate["estimated_hours"] == pytest.approx(2.5, abs=0.01)
+
+
+class TestAlternanceDesHotes:
+    """Sans alternance, la passe dure la somme des temps par hote au lieu du maximum.
+
+    875 liens NCBI a 200 requetes/heure font 4,4 heures. S'ils se suivent, on attend
+    4,4 heures avant de toucher le premier lien du deuxieme hote. En alternant, on
+    interroge les autres hotes pendant qu'on attend le NCBI.
+    """
+
+    def test_les_hotes_alternent(self, conn, tmp_path: Path) -> None:
+        rows = [
+            link_row(f"a{i}", host="gros.fr", normalized=f"https://gros.fr/{i}")
+            for i in range(10)
+        ] + [
+            link_row(f"b{i}", host="petit.fr", normalized=f"https://petit.fr/{i}")
+            for i in range(3)
+        ]
+        load_links(conn, write(tmp_path, rows))
+        hosts = [item.host for item in due(conn, SETTINGS, NOW)]
+        # Le petit hote doit etre servi tot, pas apres les dix du gros.
+        assert "petit.fr" in hosts[:6]
+
+    def test_rien_n_est_perdu(self, conn, tmp_path: Path) -> None:
+        rows = [
+            link_row(f"a{i}", host=f"h{i % 4}.fr", normalized=f"https://h{i % 4}.fr/{i}")
+            for i in range(20)
+        ]
+        load_links(conn, write(tmp_path, rows))
+        got = due(conn, SETTINGS, NOW)
+        assert len(got) == 20
+        assert len({item.link_id for item in got}) == 20

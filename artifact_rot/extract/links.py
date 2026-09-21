@@ -122,6 +122,7 @@ def extract_links(
     publisher: str,
     paper_doi: str | None = None,
     structured_urls: list[str] | None = None,
+    chrome_host: str | None = None,
 ) -> list[Link]:
     """Produit les `Link` d'un article, dedupliques et attribues a leur provenance.
 
@@ -144,6 +145,15 @@ def extract_links(
     def add(raw: str, source: str) -> None:
         normalized = canonicalize(raw)
         if normalized in seen or is_boilerplate(normalized):
+            return
+        # Habillage du site hote. Une page HTML melange l'article et le menu du site qui
+        # l'heberge : une notice Zenodo renvoie vers `about.zenodo.org`, un portail de
+        # revue vers ses propres rubriques. 216 liens `about.zenodo.org` dans un seul
+        # lot le 2026-09-21. Ce sont les liens du site, pas ceux de l'article.
+        #
+        # Ne s'applique qu'aux documents HTML : les annotations d'un PDF appartiennent
+        # au document, et un PDF depose sur Zenodo peut legitimement citer Zenodo.
+        if chrome_host and _same_site(host_of(normalized), chrome_host):
             return
         seen.add(normalized)
         links.append(
@@ -190,3 +200,15 @@ def count_on_request(text: str) -> int:
     return sum(
         1 for span in find_availability_spans(repaired) if is_on_request(span.slice(repaired))
     )
+
+
+def _same_site(host: str, other: str) -> bool:
+    """Deux hotes appartiennent-ils au meme site ? Compare les deux derniers labels.
+
+    `about.zenodo.org` et `zenodo.org` : oui. `github.com` et `zenodo.org` : non.
+    Volontairement grossier — un suffixe public complet (`co.uk`, `jst.go.jp`) exigerait
+    une liste externe, et le cas d'usage ne le demande pas : on ecarte du bruit, on ne
+    decide pas d'un statut.
+    """
+    a, b = host.lower().split("."), other.lower().split(".")
+    return len(a) >= 2 and len(b) >= 2 and a[-2:] == b[-2:]
