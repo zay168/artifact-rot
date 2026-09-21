@@ -226,6 +226,34 @@ def kind_of(url: str) -> str:
 _VALID_HOSTNAME = re.compile(r"^(?=.{1,253}$)(?!-)[a-z0-9-]{1,63}(\.(?!-)[a-z0-9-]{1,63})+$")
 
 
+def _load_tlds() -> frozenset[str]:
+    """Liste officielle des domaines de premier niveau (IANA), versionnee dans le depot.
+
+    Elle est embarquee et non telechargee : une mesure doit pouvoir etre rejouee dans
+    six mois sans dependre d'un service tiers ce jour-la.
+    """
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parent.parent / "data" / "tlds.txt"
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return frozenset()
+    return frozenset(x.strip().lower() for x in lines if x.strip() and not x.startswith("#"))
+
+
+VALID_TLDS = _load_tlds()
+"""Sert a separer deux populations que rien d'autre ne separe (§4, piege 3).
+
+Mesure du 2026-09-21 : parmi les domaines qui ne resolvent plus, `arcjournals.or`.
+Ce n'est pas un site mort — c'est un `.org` tronque par l'extraction du PDF. Le compter
+mort ajouterait au taux de mortalite un lien qui n'a jamais existe, et dans le sens qui
+arrange la these du projet.
+
+Un TLD absent de la liste de l'IANA ne peut designer aucune ressource : le lien est
+casse a la source, pas mort."""
+
+
 def is_malformed(raw: str) -> bool:
     """Piege 3 (§4) : casse des la publication, n'a donc jamais pu fonctionner.
 
@@ -243,6 +271,10 @@ def is_malformed(raw: str) -> bool:
     if not host or not _VALID_HOSTNAME.match(host):
         return True
     if " " in candidate.strip():
+        return True
+    tld = host.rsplit(".", 1)[-1]
+    if VALID_TLDS and tld not in VALID_TLDS:
+        # `arcjournals.or` : un `.org` tronque a l'extraction, pas un site disparu.
         return True
     if host == "doi.org":
         return not DOI.search(parts.path)

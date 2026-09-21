@@ -24,6 +24,9 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["artifact_rot"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"artifact_rot/data/tlds.txt" = "artifact_rot/data/tlds.txt"
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"

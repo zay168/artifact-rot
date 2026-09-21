@@ -28,6 +28,7 @@ import httpx
 from ..config import Settings
 from ..models import Link, Status
 from .base import Prober, ProbeResult, truncate_body
+from .dns import resolve as resolve_host
 
 SOFT404_SIMILARITY = 0.90
 """Au-dela, la reponse de la cible est jugee indiscernable de celle d'une URL
@@ -56,6 +57,16 @@ class GenericHTTPProber(Prober):
     def check(self, client: httpx.Client, link: Link, settings: Settings) -> ProbeResult:
         url = link.normalized
         ev: dict = {"url": url}
+
+        # Resolution du nom avant toute requete. Un nom qui n'existe pas rend une
+        # reponse — celle du DNS — et non un echec du crawler. Voir `probe/dns.py`
+        # pour la decision et ses garde-fous.
+        verdict = resolve_host(link.host)
+        ev["dns"] = verdict
+        if verdict == "nxdomain":
+            return ProbeResult(Status.DEAD, "http", "dns_nxdomain", ev)
+        if verdict == "transient":
+            return ProbeResult(Status.UNKNOWN, "http", "dns_transient", ev)
 
         if settings.respect_robots:
             allowed = _robots_allows(client, url, settings)

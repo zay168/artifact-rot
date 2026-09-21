@@ -119,3 +119,69 @@ class TestJeuDeControle:
         )
         assert report["verdict"] == "incomplet"
         assert report["missing_families"] == ["restricted"]
+
+
+class TestDNS:
+    """Un nom de domaine qui n'existe plus est une reponse, pas un echec du crawler.
+
+    Decision prise le 2026-09-21, avant la passe 3 et donc avant d'avoir vu le moindre
+    resultat final — le seul moment ou elle peut etre prise sans soupcon.
+    """
+
+    def test_nom_inexistant(self) -> None:
+        from artifact_rot.probe.dns import resolve
+
+        assert resolve("absent-" + "z" * 24 + "-artifact-rot.invalid") == "nxdomain"
+
+    def test_nom_vide_ne_leve_pas(self) -> None:
+        from artifact_rot.probe.dns import resolve
+
+        assert resolve("") == "unknown"
+
+    def test_les_codes_temporaires_ne_sont_pas_nxdomain(self) -> None:
+        """Le garde-fou central : une panne de resolveur ne doit pas produire un mort."""
+        import socket
+
+        from artifact_rot.probe import dns
+
+        assert socket.EAI_NONAME in dns._NXDOMAIN_ERRNOS
+        assert socket.EAI_NONAME not in dns._TRANSIENT_ERRNOS
+        for name in ("EAI_AGAIN", "EAI_FAIL"):
+            code = getattr(socket, name, None)
+            if code is not None:
+                assert code not in dns._NXDOMAIN_ERRNOS, name
+
+    def test_memorisation(self) -> None:
+        from artifact_rot.probe.dns import _cache, reset_cache, resolve
+
+        reset_cache()
+        host = "absent-" + "y" * 24 + "-artifact-rot.invalid"
+        resolve(host)
+        assert host in _cache
+        reset_cache()
+        assert host not in _cache
+
+
+class TestTldInvalide:
+    """`arcjournals.or` : un `.org` tronque a l'extraction, pas un site disparu.
+
+    Le compter mort ajouterait au taux de mortalite un lien qui n'a jamais existe — et
+    dans le sens qui arrange la these du projet.
+    """
+
+    def test_tld_absent_de_l_iana(self) -> None:
+        from artifact_rot.extract.normalize import is_malformed
+
+        assert is_malformed("https://arcjournals.or/article/12")
+
+    def test_tld_valide(self) -> None:
+        from artifact_rot.extract.normalize import is_malformed
+
+        assert not is_malformed("https://arcjournals.org/article/12")
+
+    def test_la_liste_est_chargee(self) -> None:
+        from artifact_rot.extract.normalize import VALID_TLDS
+
+        assert len(VALID_TLDS) > 1000
+        assert "org" in VALID_TLDS and "fr" in VALID_TLDS
+        assert "or" not in VALID_TLDS

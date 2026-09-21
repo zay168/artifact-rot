@@ -322,11 +322,15 @@ class TestLimiteurDeDebit:
 
         from artifact_rot.limiter import HostRateLimiter
 
-        limiter = HostRateLimiter(lambda _host: 0.05)
+        # Intervalle volontairement large : la granularite de `time.sleep` sous Windows
+        # est d'environ 15 ms, et un seuil serre rendrait le test instable pour une
+        # raison qui n'a rien a voir avec ce qu'il verifie.
+        interval, n = 0.1, 4
+        limiter = HostRateLimiter(lambda _host: interval)
         start = time.monotonic()
-        for _ in range(4):
+        for _ in range(n):
             limiter.acquire("a.fr")
-        assert time.monotonic() - start >= 0.14
+        assert time.monotonic() - start >= interval * (n - 1) * 0.8
 
     def test_deux_hotes_ne_s_attendent_pas(self) -> None:
         """Le point de toute l'optimisation : patienter pour l'hote A ne doit rien
