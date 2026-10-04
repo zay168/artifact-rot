@@ -17,6 +17,10 @@ et donnerait un chiffre flatteur et creux.
 Usage :
     ARTIFACT_ROT_CONTACT="vous@exemple.org" python -m artifact_rot.harvest fetch 400
     ARTIFACT_ROT_CONTACT="vous@exemple.org" python -m artifact_rot.harvest recall
+
+Extension x3 de la zone grise (docs/prolongation.md) :
+    python -m artifact_rot.harvest fetch-ext
+    python -m artifact_rot.harvest links-ext     # artefacts seuls
 """
 
 from __future__ import annotations
@@ -79,6 +83,38 @@ def pick(rows: list[dict], n: int, seed: int = HARVEST_SEED) -> list[dict]:
     for stratum in sorted(by):
         items = by[stratum]
         out.extend(rng.sample(items, min(per, len(items))))
+    return out
+
+
+BASE_N = 2000
+EXTENSION_SEED = 20261004
+EXTENSION_PER_STRATUM = 200
+ARTIFACT_KINDS = {"code_repo", "data_repo", "dataset_doi"}
+
+
+def pick_extension(
+    rows: list[dict],
+    already: list[dict],
+    per_stratum: int = EXTENSION_PER_STRATUM,
+    seed: int = EXTENSION_SEED,
+) -> list[dict]:
+    """L'extension x3 de la zone grise (docs/prolongation.md §4).
+
+    Tiree parmi les articles **pas encore moissonnes** de chaque strate, avec une graine
+    distincte. Rappeler `pick` avec un effectif triple ne donnerait pas un sur-ensemble des
+    2 000 premiers : `random.sample` ne garantit pas qu'un tirage de 300 commence par celui
+    de 100. On perdrait les liens deja sondes trois fois.
+    """
+    taken = {r["openalex_id"] for r in already}
+    by: dict[str, list[dict]] = collections.defaultdict(list)
+    for row in rows:
+        if row["openalex_id"] not in taken:
+            by[row["stratum"]].append(row)
+    rng = random.Random(seed)
+    out: list[dict] = []
+    for stratum in sorted(by):
+        items = by[stratum]
+        out.extend(rng.sample(items, min(per_stratum, len(items))))
     return out
 
 
@@ -263,7 +299,14 @@ def main(argv: list[str] | None = None) -> int:
     if sample_dir is None:
         print("aucun echantillon : lancer `python -m artifact_rot.sample build`", file=sys.stderr)
         return 2
-    rows = pick(load_sample(sample_dir), int(args[1]) if len(args) > 1 else 400)
+    sample = load_sample(sample_dir)
+    if command.endswith("-ext"):
+        rows = pick_extension(sample, pick(sample, BASE_N))
+        command = command.removesuffix("-ext")
+    else:
+        rows = pick(sample, int(args[1]) if len(args) > 1 else 400)
+    # L'extension ne sonde que les artefacts (docs/prolongation.md §4.3).
+    artifacts_only = len(args) > 0 and args[0] == "links-ext"
 
     if command == "fetch":
         print(f"E3 — moissonnage de {len(rows)} articles", file=sys.stderr)
@@ -307,7 +350,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if command == "links":
         links = links_of(rows)
-        out = RUNS / _stamp("links") / "links.jsonl"
+        if artifacts_only:
+            print(f"extension : {len(links)} liens extraits, artefacts seuls conserves")
+            links = [link for link in links if link["kind"] in ARTIFACT_KINDS]
+        out = RUNS / _stamp("links-ext" if artifacts_only else "links") / "links.jsonl"
         out.parent.mkdir(parents=True, exist_ok=True)
         with out.open("w", encoding="utf-8", newline="\n") as fh:
             for link in links:
@@ -325,7 +371,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  « sur demande » (jamais sonde, §4 piege 4) : {on_request}")
         return 0
 
-    print(f"commande inconnue : {command!r} (fetch | recall | links)", file=sys.stderr)
+    print(
+        f"commande inconnue : {command!r} (fetch | recall | links | fetch-ext | links-ext)",
+        file=sys.stderr,
+    )
     return 2
 
 
