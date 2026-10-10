@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 
-PROJECT_URL = "https://github.com/artifact-rot/artifact-rot"
+PROJECT_URL = "https://github.com/zay168/artifact-rot"
 
 
 class ConfigError(RuntimeError):
