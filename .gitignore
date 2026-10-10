@@ -5,6 +5,7 @@ __pycache__/
 .ruff_cache/
 *.egg-info/
 .env
+.cache/
 
 # Runs are immutable and never cleaned (PLAN.md §5), but they are not versioned by
 # default: they can be heavy and are published separately with the report. The
