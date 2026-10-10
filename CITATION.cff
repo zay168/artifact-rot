@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "Si vous utilisez ce code ou ces données, merci de citer cette version archivée."
+title: "artifact-rot : observatoire de la survie des liens de code et de données annoncés dans les articles scientifiques"
+type: software
+authors:
+  - family-names: "Al Sarraf"
+    given-names: "Zayd"
+repository-code: "https://github.com/zay168/artifact-rot"
+license: MIT
+version: "0.1.0-preregistration"
+date-released: "2026-10-10"
+abstract: >-
+  Mesure, à grande échelle et de façon rejouable, de la résolution des liens vers le
+  code et les données annoncés dans les articles scientifiques en accès ouvert
+  (échantillon stratifié OpenAlex, 5 années × 4 disciplines). Cette version fige
+  l'analyse et la règle de décision pré-enregistrées (docs/analyse.md,
+  docs/prolongation.md) avant le verdict de la prolongation, prévu le 2026-10-15.
+keywords:
+  - link rot
+  - reference rot
+  - research data
+  - research software
+  - reproducibility
+  - preregistration
+  - survival analysis
