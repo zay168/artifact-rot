@@ -1,19 +1,19 @@
-"""Canonicalisation et deduplication des liens.
+"""Link canonicalisation and deduplication.
 
-Trois des regles de ce module viennent directement des modes d'echec mesures par
-`scienceverse/metacheck` sur son corpus de validation de 1 861 articles (issue #411,
-AGPL-3.0, R — rien n'est repris du code, seulement les cas d'echec documentes ; voir
-docs/etat-de-lart.md §2.2). Ils sont reproduits comme tests de regression nommes :
+Three of this module's rules come directly from failure modes measured by
+`scienceverse/metacheck` on its validation corpus of 1,861 papers (issue #411,
+AGPL-3.0, R — none of its code is reused, only the documented failure cases; see
+docs/related-work.md §2.2). They are reproduced as named regression tests:
 
-* `repair_spaced_hosts` : GROBID insere des espaces en fin de ligne dans les URL
-  (`https://doi. org/10.7939/DVN/QYMAYV`), observe dans 85 % des articles du corpus.
-  La reparation s'applique AVANT toute regex, jamais apres.
-* `FIGSHARE_ID` couvre `/articles/<slug>/<id>`, motif sans segment de type de
-  ressource que metacheck renvoyait en `NA`.
-* la provenance `references` est portee par `Link.source` et non ecartee en silence.
+* `repair_spaced_hosts`: GROBID inserts spaces at line ends inside URLs
+  (`https://doi. org/10.7939/DVN/QYMAYV`), observed in 85% of the corpus's papers.
+  The repair is applied BEFORE any regex, never after.
+* `FIGSHARE_ID` covers `/articles/<slug>/<id>`, a pattern without a resource-type
+  segment that metacheck returned as `NA`.
+* the `references` provenance is carried by `Link.source`, not silently discarded.
 
-L'apport propre de ce module est la separation `on_request` / `malformed_at_source`
-(pieges 3 et 4 du §4), absente de metacheck.
+This module's own contribution is the separation of `on_request` / `malformed_at_source`
+(pitfalls 3 and 4 of §4), absent from metacheck.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from __future__ import annotations
 import re
 from urllib.parse import urlsplit, urlunsplit
 
-# --- Reparation des URL cassees par l'extraction PDF -------------------------------
+# --- Repairing URLs broken by PDF extraction ---------------------------------------
 
 _SPACED_TLD = re.compile(
     r"\b((?:https?://)?(?:[\w-]+\.)+)\s+((?:org|com|net|edu|io|gov|fr|de|uk|ac\.uk)\b)",
@@ -32,11 +32,11 @@ _SPACED_PATH = re.compile(r"(https?://[^\s]+?)\s+(/[^\s]+)")
 
 
 def repair_spaced_hosts(text: str) -> str:
-    """Recolle les URL coupees par l'extraction PDF -> texte.
+    """Rejoin URLs split by PDF-to-text extraction.
 
-    Conservatrice a dessein : ne recolle que les coupures dont le membre droit est un
-    TLD connu ou un segment de chemin. Recoller plus largement inventerait des liens,
-    ce qui est pire qu'en manquer — on mesure du rot, pas de la creativite de regex.
+    Conservative by design: only rejoins splits whose right-hand side is a known TLD or a
+    path segment. Rejoining more broadly would invent links, which is worse than missing
+    some — we measure rot, not regex creativity.
     """
     out = _SPACED_SCHEME.sub("https://", text)
     out = _SPACED_TLD.sub(lambda m: m.group(1) + m.group(2), out)
@@ -44,7 +44,7 @@ def repair_spaced_hosts(text: str) -> str:
     return out
 
 
-# --- Detection « sur demande » (piege 4) -------------------------------------------
+# --- "On request" detection (pitfall 4) ---------------------------------------------
 
 _ON_REQUEST = re.compile(
     r"\b("
@@ -60,14 +60,15 @@ _ON_REQUEST = re.compile(
 
 
 def is_on_request(statement: str) -> bool:
-    """« Disponible sur demande » n'est pas un lien : ni mort, ni vivant, jamais sonde.
+    """"Available on request" is not a link: neither dead nor alive, never probed.
 
-    Compte et reporte a part (§4 piege 4). On n'ecrit pas a des milliers d'auteurs.
+    Counted and reported separately (§4 pitfall 4). We do not write to thousands of
+    authors.
     """
     return bool(_ON_REQUEST.search(statement))
 
 
-# --- Identifiants d'hebergeurs ------------------------------------------------------
+# --- Host identifiers ----------------------------------------------------------------
 
 GITHUB_SLUG = re.compile(
     r"(?:https?://)?(?:www\.)?github\.com/([\w.-]+)/([\w.-]+?)(?:\.git)?(?=[/#?]|$)",
@@ -102,16 +103,15 @@ _ENTITY_IN_URL = {"&amp;": "&", "&#38;": "&", "&lt;": "<", "&gt;": ">", "&quot;"
 
 
 def _decode_entities(url: str) -> str:
-    """Decode les entites HTML restees dans une URL.
+    """Decode HTML entities left inside a URL.
 
-    Observe le 2026-09-21 sur le corpus : des centaines d'URL de la forme
-    `…query.fcgi?cmd=Retrieve&amp;db=PubMed&amp;dopt=Abstract`. L'entite vient du HTML
-    ou du PDF d'origine et traverse l'extraction telle quelle.
+    Observed on 2026-09-21 in the corpus: hundreds of URLs of the form
+    `…query.fcgi?cmd=Retrieve&amp;db=PubMed&amp;dopt=Abstract`. The entity comes from the
+    original HTML or PDF and passes through extraction unchanged.
 
-    Sondee ainsi, l'URL n'est pas celle que l'auteur a ecrite : le serveur recoit un
-    parametre nomme `amp;db` et peut repondre n'importe quoi. Une URL mal decodee
-    produit donc un statut faux — et, dans le sens qui arrange la these du projet, un
-    faux lien mort.
+    Probed as is, the URL is not the one the author wrote: the server receives a parameter
+    named `amp;db` and may answer anything. A badly decoded URL therefore produces a wrong
+    status — and, in the direction that suits the project's thesis, a false dead link.
     """
     for entity, char in _ENTITY_IN_URL.items():
         url = url.replace(entity, char)
@@ -119,10 +119,10 @@ def _decode_entities(url: str) -> str:
 
 
 def _safe_split(url: str):
-    """`urlsplit` leve sur certaines URL reelles — un `[` isole suffit (« Invalid IPv6
-    URL »). Rencontre le 2026-09-20 sur le corpus reel, ou il a fait tomber le calcul de
-    rappel. Une URL d'article est une chaine trouvee dans un PDF : elle peut etre
-    n'importe quoi. Aucune fonction de ce module ne doit lever a cause d'elle.
+    """`urlsplit` raises on some real URLs — a lone `[` is enough ("Invalid IPv6 URL").
+    Encountered on 2026-09-20 in the real corpus, where it brought down the recall
+    computation. A paper's URL is a string found in a PDF: it can be anything. No function
+    in this module may raise because of it.
     """
     try:
         return urlsplit(url if "//" in url else f"https://{url}")
@@ -139,12 +139,11 @@ def host_of(url: str) -> str:
 
 
 def canonicalize(raw: str) -> str:
-    """Forme canonique servant a la deduplication et au `link_id`.
+    """Canonical form used for deduplication and for `link_id`.
 
-    Ne resout rien, ne suit aucune redirection : deux liens differents dans le texte
-    doivent rester deux liens si les auteurs les ont ecrits differemment, sauf
-    difference purement cosmetique (schema, `www.`, ponctuation finale, parametres de
-    tracking, slash final).
+    Resolves nothing, follows no redirect: two different links in the text must stay two
+    links if the authors wrote them differently, except for purely cosmetic differences
+    (scheme, `www.`, trailing punctuation, tracking parameters, trailing slash).
     """
     url = raw.strip().rstrip(_TRAILING_PUNCT).strip()
     url = _decode_entities(url)
@@ -157,8 +156,8 @@ def canonicalize(raw: str) -> str:
         url = "https://" + url
     parts = _safe_split(url)
     if parts is None:
-        # URL impossible a decouper : on la rend telle quelle. Elle sera classee
-        # `malformed_at_source` et comptee a part, jamais comme un lien mort.
+        # A URL that cannot be split: returned as is. It will be classed
+        # `malformed_at_source` and counted separately, never as a dead link.
         return url
     scheme = "https"
     netloc = parts.netloc.lower()
@@ -183,26 +182,26 @@ DATASET_DOI_PREFIXES = {
     "10.17632",  # Mendeley Data
     "10.5063",   # KNB / DataONE
     "10.15468",  # GBIF
-    "10.25493",  # divers depots institutionnels
+    "10.25493",  # various institutional repositories
     "10.4121",   # 4TU.ResearchData
     "10.7937",   # TCIA
-    "10.18112",  # divers
+    "10.18112",  # various
 }
-"""Prefixes DOI d'agences de depot de donnees.
+"""DOI prefixes of data repository agencies.
 
-**Ecart assume au PLAN.md §5.** Le plan liste `dataset_doi` parmi les types suivis. La
-premiere version etiquetait ainsi **tout** DOI, y compris ceux des articles cites en
-bibliographie. Mesure du 2026-09-20 : sur 8 073 liens extraits de 400 articles, 3 449
-etaient classes `dataset_doi` alors que l'immense majorite sont des DOI d'articles.
+**Deliberate deviation from PLAN.md §5.** The plan lists `dataset_doi` among the tracked
+kinds. The first version labelled **every** DOI this way, including those of papers cited
+in the bibliography. Measured on 2026-09-20: of 8,073 links extracted from 400 papers,
+3,449 were classed `dataset_doi` whereas the vast majority are paper DOIs.
 
-Les sonder reviendrait a mesurer la survie de la litterature scientifique — qui ne meurt
-pas, un DOI d'article est maintenu par son editeur — et a infliger des milliers de
-requetes inutiles a doi.org. Ce serait aussi un chiffre trompeur : un taux de survie
-excellent, porte par une population qui n'est pas celle du projet.
+Probing them would measure the survival of the scientific literature — which does not
+die, a paper DOI is maintained by its publisher — and inflict thousands of useless
+requests on doi.org. It would also be a misleading figure: an excellent survival rate,
+carried by a population that is not the project's.
 
-D'ou un type supplementaire, `citation_doi`, exclu du sondage par defaut. La liste de
-prefixes est volontairement conservatrice : dans le doute, un DOI est une citation. Un
-depot manque est une perte ; un article compte comme jeu de donnees est une faute."""
+Hence an additional kind, `citation_doi`, excluded from probing by default. The prefix
+list is deliberately conservative: when in doubt, a DOI is a citation. A missed
+repository is a loss; a paper counted as a dataset is a mistake."""
 
 
 def doi_prefix(url: str) -> str | None:
@@ -227,10 +226,10 @@ _VALID_HOSTNAME = re.compile(r"^(?=.{1,253}$)(?!-)[a-z0-9-]{1,63}(\.(?!-)[a-z0-9
 
 
 def _load_tlds() -> frozenset[str]:
-    """Liste officielle des domaines de premier niveau (IANA), versionnee dans le depot.
+    """Official list of top-level domains (IANA), versioned in the repository.
 
-    Elle est embarquee et non telechargee : une mesure doit pouvoir etre rejouee dans
-    six mois sans dependre d'un service tiers ce jour-la.
+    It is bundled rather than downloaded: a measurement must be replayable in six months
+    without depending on a third-party service that day.
     """
     from pathlib import Path
 
@@ -243,30 +242,30 @@ def _load_tlds() -> frozenset[str]:
 
 
 VALID_TLDS = _load_tlds()
-"""Sert a separer deux populations que rien d'autre ne separe (§4, piege 3).
+"""Used to separate two populations nothing else separates (§4, pitfall 3).
 
-Mesure du 2026-09-21 : parmi les domaines qui ne resolvent plus, `arcjournals.or`.
-Ce n'est pas un site mort — c'est un `.org` tronque par l'extraction du PDF. Le compter
-mort ajouterait au taux de mortalite un lien qui n'a jamais existe, et dans le sens qui
-arrange la these du projet.
+Measured on 2026-09-21: among domains that no longer resolve, `arcjournals.or`. This is
+not a dead site — it is a `.org` truncated by PDF extraction. Counting it dead would add
+to the mortality rate a link that never existed, and in the direction that suits the
+project's thesis.
 
-Un TLD absent de la liste de l'IANA ne peut designer aucune ressource : le lien est
-casse a la source, pas mort."""
+A TLD absent from the IANA list cannot designate any resource: the link is broken at the
+source, not dead."""
 
 
 def is_malformed(raw: str) -> bool:
-    """Piege 3 (§4) : casse des la publication, n'a donc jamais pu fonctionner.
+    """Pitfall 3 (§4): broken from publication, so it could never have worked.
 
-    Mesure le controle editorial, pas le rot. A ne surtout pas melanger au taux de
-    liens morts : ce sont deux chiffres, tous deux interessants, jamais additionnes.
+    Measures editorial control, not rot. Must never be mixed into the dead-link rate: they
+    are two figures, both interesting, never added together.
 
-    Volontairement syntaxique et hors-ligne : aucune requete reseau n'intervient ici.
-    Un lien bien forme mais pointant nulle part est `dead`, pas `malformed`.
+    Deliberately syntactic and offline: no network request is involved here. A
+    well-formed link pointing nowhere is `dead`, not `malformed`.
     """
     candidate = canonicalize(raw)
     parts = _safe_split(candidate)
     if parts is None:
-        return True  # indecoupable par la bibliotheque standard : casse, par definition
+        return True  # cannot be split by the standard library: broken, by definition
     host = parts.netloc.split(":")[0]
     if not host or not _VALID_HOSTNAME.match(host):
         return True
@@ -274,18 +273,18 @@ def is_malformed(raw: str) -> bool:
         return True
     tld = host.rsplit(".", 1)[-1]
     if VALID_TLDS and tld not in VALID_TLDS:
-        # `arcjournals.or` : un `.org` tronque a l'extraction, pas un site disparu.
+        # `arcjournals.or`: a `.org` truncated at extraction, not a vanished site.
         return True
     if host == "doi.org":
         return not DOI.search(parts.path)
     if host == "github.com":
-        # Un lien GitHub sans owner/repo ne designe aucune ressource.
+        # A GitHub link without owner/repo designates no resource.
         return not GITHUB_SLUG.search(candidate)
     return False
 
 
 def dedupe(urls: list[str]) -> list[str]:
-    """Deduplication stable : premiere occurrence conservee, ordre du texte preserve."""
+    """Stable deduplication: first occurrence kept, text order preserved."""
     seen: set[str] = set()
     out: list[str] = []
     for url in urls:

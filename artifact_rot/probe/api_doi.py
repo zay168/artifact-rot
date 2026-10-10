@@ -1,17 +1,17 @@
-"""Sonde DOI : resolution de l'identifiant via l'API Handle, pas via la page.
+"""DOI prober: resolves the identifier through the Handle API, not through the page.
 
-Deux choses differentes que la litterature confond regulierement :
+Two different things the literature regularly conflates:
 
-* le **DOI est-il enregistre** et pointe-t-il quelque part ? C'est l'API Handle qui
-  repond, sans ambiguite et sans dependre de l'etat du serveur cible ;
-* la **page de destination repond-elle** ? C'est une autre question, dont la reponse
-  peut etre non alors que le DOI resout parfaitement.
+* **is the DOI registered**, and does it point somewhere? The Handle API answers,
+  unambiguously and without depending on the target server's state;
+* **does the landing page respond**? That is another question, whose answer can be no
+  while the DOI resolves perfectly.
 
-Le statut renvoye par cette sonde porte la premiere question — c'est la definition de
-« resolution d'identifiant » du §1 du plan. La seconde est mesuree quand meme et
-rangee dans la preuve sous `landing_*`, pour que le rapport E6 puisse publier les deux
-chiffres cote a cote au lieu d'en melanger un seul. Un DOI enregistre pointant vers un
-serveur mort est un resultat en soi, et il serait malhonnete de le noyer.
+The status returned by this prober answers the first question — it is the plan's §1
+definition of "identifier resolution". The second is measured anyway and stored in the
+evidence under `landing_*`, so that the E6 report can publish both figures side by side
+instead of blending them into one. A registered DOI pointing to a dead server is a result
+in itself, and it would be dishonest to bury it.
 """
 
 from __future__ import annotations
@@ -83,10 +83,10 @@ def _target_url(body: dict) -> str | None:
 def _annotate_landing(
     client: httpx.Client, target: str, ev: dict, settings: Settings
 ) -> None:
-    """Mesure l'etat de la page de destination — en preuve, jamais en statut.
+    """Measure the landing page's state — as evidence, never as status.
 
-    Aucune exception ne remonte : l'echec de cette mesure secondaire ne doit pas
-    degrader la sonde principale, qui a deja sa reponse.
+    No exception propagates: failure of this secondary measurement must not degrade the
+    main probe, which already has its answer.
     """
     try:
         r = client.head(target)

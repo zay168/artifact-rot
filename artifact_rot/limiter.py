@@ -1,16 +1,16 @@
-"""Limiteur de debit par hote, pour une execution concurrente.
+"""Per-host rate limiter, for concurrent execution.
 
-La premiere version de l'ordonnanceur sondait **un lien a la fois**, dans tout le run.
-Or la file porte 2 230 hotes distincts : attendre dix-huit secondes entre deux requetes
-au NCBI n'oblige en rien a ne rien faire pendant ce temps chez les 2 229 autres.
+The first version of the scheduler probed **one link at a time** across the whole run.
+Yet the queue holds over 2,000 distinct hosts: waiting eighteen seconds between two NCBI
+requests in no way requires doing nothing at the others in the meantime.
 
-La duree d'une passe passe donc de la **somme** des temps par hote a leur **maximum**.
-Trois heures deviennent une quinzaine de minutes, sans qu'aucun hote ne recoive une
-seule requete de plus ni plus vite : chaque hote garde exactement son debit.
+A pass therefore goes from the **sum** of per-host times to their **maximum**. Three
+hours become about fifteen minutes, without any host receiving a single extra request,
+or receiving one faster: each host keeps exactly its rate.
 
-C'est le point important, et il vaut d'etre ecrit noir sur blanc parce que « accelerer
-un crawler » evoque generalement le contraire : **on n'accelere pas les hotes, on cesse
-de les faire attendre les uns pour les autres.**
+That is the important point, worth stating plainly because "speeding up a crawler"
+usually suggests the opposite: **hosts are not sped up, they stop waiting for each
+other.**
 """
 
 from __future__ import annotations
@@ -21,10 +21,10 @@ from collections import defaultdict
 
 
 class HostRateLimiter:
-    """Un intervalle minimal entre deux requetes vers un meme hote.
+    """A minimum interval between two requests to the same host.
 
-    Sur, en concurrence : chaque hote a son propre verrou, et un thread qui doit
-    patienter pour l'hote A ne bloque pas un thread qui travaille sur l'hote B.
+    Safe under concurrency: each host has its own lock, and a thread that must wait for
+    host A does not block a thread working on host B.
     """
 
     def __init__(self, interval_for: callable) -> None:
@@ -34,10 +34,10 @@ class HostRateLimiter:
         self._guard = threading.Lock()
 
     def acquire(self, host: str) -> float:
-        """Attend le temps qu'il faut, puis reserve le creneau. Rend le temps attendu.
+        """Wait as long as needed, then book the slot. Returns the time waited.
 
-        La reservation est faite **avant** de dormir : deux threads vises sur le meme
-        hote se serialisent proprement au lieu de partir ensemble apres la meme attente.
+        The booking happens **before** sleeping: two threads targeting the same host are
+        serialised properly instead of leaving together after the same wait.
         """
         with self._guard:
             lock = self._locks[host]

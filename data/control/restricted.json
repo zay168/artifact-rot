@@ -2,145 +2,145 @@
   {
     "url": "https://github.com/zay168/Lucid-project",
     "kind": "code_repo",
-    "provenance": "depot GitHub possede par l'auteur, passe en prive le 2026-09-20. Cas revelateur : l'API GitHub renvoie 404 pour un depot prive comme pour un depot supprime, aucun appel public ne les distingue. Une erreur attendue, conservee pour que la limite apparaisse dans le chiffre.",
+    "provenance": "GitHub repository owned by the author, made private on 2026-09-20. A revealing case: the GitHub API returns 404 for a private repository as for a deleted one, and no public call tells them apart. An expected error, kept so that the limitation shows in the figure.",
     "circular": false
   },
   {
     "url": "https://osf.io/q4zkg",
     "kind": "data_repo",
-    "provenance": "projet OSF cree en mode prive le 2026-09-20, possede par l'auteur. L'API OSF distingue reellement prive de supprime.",
+    "provenance": "OSF project created as private on 2026-09-20, owned by the author. The OSF API genuinely distinguishes private from deleted.",
     "circular": false
   },
   {
     "url": "https://zenodo.org/records/22858099",
     "kind": "data_repo",
-    "provenance": "depot Zenodo publie le 2026-09-20, fichiers sous embargo jusqu'au 2030-01-01, possede par l'auteur. Notice publique, fichiers fermes : le cas legitime frequent en medecine.",
+    "provenance": "Zenodo deposit published on 2026-09-20, files embargoed until 2030-01-01, owned by the author. Public record, closed files: the common legitimate case in medicine.",
     "circular": false
   },
   {
     "url": "https://zenodo.org/records/22748486",
     "kind": "data_repo",
-    "provenance": "enregistrement Zenodo declare `restricted` par l'API le 2026-09-20 (access=restricted). Verite PARTIELLEMENT CIRCULAIRE : elle vient du meme champ que lit la sonde. Verifie la chaine, pas le jugement.",
+    "provenance": "Zenodo record declared `restricted` by the API on 2026-09-20 (access=restricted). PARTIALLY CIRCULAR truth: it comes from the same field the prober reads. Checks the pipeline, not the judgement.",
     "circular": true
   },
   {
     "url": "https://zenodo.org/records/22857030",
     "kind": "data_repo",
-    "provenance": "enregistrement Zenodo declare `restricted` par l'API le 2026-09-20 (access=restricted). Verite PARTIELLEMENT CIRCULAIRE : elle vient du meme champ que lit la sonde. Verifie la chaine, pas le jugement.",
+    "provenance": "Zenodo record declared `restricted` by the API on 2026-09-20 (access=restricted). PARTIALLY CIRCULAR truth: it comes from the same field the prober reads. Checks the pipeline, not the judgement.",
     "circular": true
   },
   {
     "url": "https://zenodo.org/records/22858506",
     "kind": "data_repo",
-    "provenance": "enregistrement Zenodo declare `restricted` par l'API le 2026-09-20 (access=restricted). Verite PARTIELLEMENT CIRCULAIRE : elle vient du meme champ que lit la sonde. Verifie la chaine, pas le jugement.",
+    "provenance": "Zenodo record declared `restricted` by the API on 2026-09-20 (access=restricted). PARTIALLY CIRCULAR truth: it comes from the same field the prober reads. Checks the pipeline, not the judgement.",
     "circular": true
   },
   {
     "url": "https://zenodo.org/records/22859985",
     "kind": "data_repo",
-    "provenance": "enregistrement Zenodo declare `embargoed` par l'API le 2026-09-20 (access=embargoed). Verite PARTIELLEMENT CIRCULAIRE : elle vient du meme champ que lit la sonde. Verifie la chaine, pas le jugement.",
+    "provenance": "Zenodo record declared `embargoed` by the API on 2026-09-20 (access=embargoed). PARTIALLY CIRCULAR truth: it comes from the same field the prober reads. Checks the pipeline, not the judgement.",
     "circular": true
   },
   {
     "url": "https://zenodo.org/records/22859326",
     "kind": "data_repo",
-    "provenance": "enregistrement Zenodo declare `embargoed` par l'API le 2026-09-20 (access=embargoed). Verite PARTIELLEMENT CIRCULAIRE : elle vient du meme champ que lit la sonde. Verifie la chaine, pas le jugement.",
+    "provenance": "Zenodo record declared `embargoed` by the API on 2026-09-20 (access=embargoed). PARTIALLY CIRCULAR truth: it comes from the same field the prober reads. Checks the pipeline, not the judgement.",
     "circular": true
   },
   {
     "url": "https://zenodo.org/records/22858453",
     "kind": "data_repo",
-    "provenance": "enregistrement Zenodo declare `embargoed` par l'API le 2026-09-20 (access=embargoed). Verite PARTIELLEMENT CIRCULAIRE : elle vient du meme champ que lit la sonde. Verifie la chaine, pas le jugement.",
+    "provenance": "Zenodo record declared `embargoed` by the API on 2026-09-20 (access=embargoed). PARTIALLY CIRCULAR truth: it comes from the same field the prober reads. Checks the pipeline, not the judgement.",
     "circular": true
   },
   {
     "url": "https://github.com/bullshitmenow/daimler_sandbox",
     "kind": "code_repo",
-    "provenance": "depot retire pour raisons legales ; avis publie dans github/dmca/2026/02/2026-02-02-autoliv.md (releve le 2026-09-20). Verite independante de notre classification.",
+    "provenance": "repository taken down for legal reasons; notice published in github/dmca/2026/02/2026-02-02-autoliv.md (recorded on 2026-09-20). Truth independent of our classification.",
     "circular": false
   },
   {
     "url": "https://github.com/kohlerhub/kohlerhub.github.io",
     "kind": "code_repo",
-    "provenance": "depot retire pour raisons legales ; avis publie dans github/dmca/2026/02/2026-02-02-comethub.md (releve le 2026-09-20). Verite independante de notre classification.",
+    "provenance": "repository taken down for legal reasons; notice published in github/dmca/2026/02/2026-02-02-comethub.md (recorded on 2026-09-20). Truth independent of our classification.",
     "circular": false
   },
   {
     "url": "https://github.com/undefined-name12/despix",
     "kind": "code_repo",
-    "provenance": "depot retire pour raisons legales ; avis publie dans github/dmca/2026/02/2026-02-02-depixelization-poc.md (releve le 2026-09-20). Verite independante de notre classification.",
+    "provenance": "repository taken down for legal reasons; notice published in github/dmca/2026/02/2026-02-02-depixelization-poc.md (recorded on 2026-09-20). Truth independent of our classification.",
     "circular": false
   },
   {
     "url": "https://github.com/OphirMikhael/Celesti-hell",
     "kind": "code_repo",
-    "provenance": "depot retire pour raisons legales ; avis publie dans github/dmca/2026/02/2026-02-02-divine-studio.md (releve le 2026-09-20). Verite independante de notre classification.",
+    "provenance": "repository taken down for legal reasons; notice published in github/dmca/2026/02/2026-02-02-divine-studio.md (recorded on 2026-09-20). Truth independent of our classification.",
     "circular": false
   },
   {
     "url": "https://github.com/cah-kanaga-veeramani01/connect-baseservice-handler",
     "kind": "code_repo",
-    "provenance": "depot retire pour raisons legales ; avis publie dans github/dmca/2025/09/2025-09-02-outcomes.md (releve le 2026-09-20). Verite independante de notre classification.",
+    "provenance": "repository taken down for legal reasons; notice published in github/dmca/2025/09/2025-09-02-outcomes.md (recorded on 2026-09-20). Truth independent of our classification.",
     "circular": false
   },
   {
     "url": "https://github.com/prassannn/saasyKitProject",
     "kind": "code_repo",
-    "provenance": "depot retire pour raisons legales ; avis publie dans github/dmca/2025/09/2025-09-02-saasykit.md (releve le 2026-09-20). Verite independante de notre classification.",
+    "provenance": "repository taken down for legal reasons; notice published in github/dmca/2025/09/2025-09-02-saasykit.md (recorded on 2026-09-20). Truth independent of our classification.",
     "circular": false
   },
   {
     "url": "https://github.com/TarunG78/India-TV",
     "kind": "code_repo",
-    "provenance": "depot retire pour raisons legales ; avis publie dans github/dmca/2025/09/2025-09-02-zee.md (releve le 2026-09-20). Verite independante de notre classification.",
+    "provenance": "repository taken down for legal reasons; notice published in github/dmca/2025/09/2025-09-02-zee.md (recorded on 2026-09-20). Truth independent of our classification.",
     "circular": false
   },
   {
     "url": "https://github.com/MohammadKobirShah/Zee5LocalHost",
     "kind": "code_repo",
-    "provenance": "depot retire pour raisons legales ; avis publie dans github/dmca/2025/09/2025-09-02-zee.md (releve le 2026-09-20). Verite independante de notre classification.",
+    "provenance": "repository taken down for legal reasons; notice published in github/dmca/2025/09/2025-09-02-zee.md (recorded on 2026-09-20). Truth independent of our classification.",
     "circular": false
   },
   {
     "url": "https://github.com/Sufiyan123yivh/Zee5",
     "kind": "code_repo",
-    "provenance": "depot retire pour raisons legales ; avis publie dans github/dmca/2025/09/2025-09-02-zee.md (releve le 2026-09-20). Verite independante de notre classification.",
+    "provenance": "repository taken down for legal reasons; notice published in github/dmca/2025/09/2025-09-02-zee.md (recorded on 2026-09-20). Truth independent of our classification.",
     "circular": false
   },
   {
     "url": "https://github.com/br8828982/M3U",
     "kind": "code_repo",
-    "provenance": "depot retire pour raisons legales ; avis publie dans github/dmca/2025/09/2025-09-02-zee.md (releve le 2026-09-20). Verite independante de notre classification.",
+    "provenance": "repository taken down for legal reasons; notice published in github/dmca/2025/09/2025-09-02-zee.md (recorded on 2026-09-20). Truth independent of our classification.",
     "circular": false
   },
   {
     "url": "https://github.com/soilmedia69/cxxzydeapp",
     "kind": "code_repo",
-    "provenance": "depot retire pour raisons legales ; avis publie dans github/dmca/2025/03/2025-03-03-american-express.md (releve le 2026-09-20). Verite independante de notre classification.",
+    "provenance": "repository taken down for legal reasons; notice published in github/dmca/2025/03/2025-03-03-american-express.md (recorded on 2026-09-20). Truth independent of our classification.",
     "circular": false
   },
   {
     "url": "https://github.com/liunianmiyu/qilubank",
     "kind": "code_repo",
-    "provenance": "depot retire pour raisons legales ; avis publie dans github/dmca/2025/03/2025-03-03-qilu-bank.md (releve le 2026-09-20). Verite independante de notre classification.",
+    "provenance": "repository taken down for legal reasons; notice published in github/dmca/2025/03/2025-03-03-qilu-bank.md (recorded on 2026-09-20). Truth independent of our classification.",
     "circular": false
   },
   {
     "url": "https://zenodo.org/records/22057141",
     "kind": "data_repo",
-    "provenance": "enregistrement Zenodo declare `restricted` par l'API le 2026-09-20 (access=restricted). Verite PARTIELLEMENT CIRCULAIRE : elle vient du meme champ que lit la sonde. Verifie la chaine, pas le jugement.",
+    "provenance": "Zenodo record declared `restricted` by the API on 2026-09-20 (access=restricted). PARTIALLY CIRCULAR truth: it comes from the same field the prober reads. Checks the pipeline, not the judgement.",
     "circular": true
   },
   {
     "url": "https://zenodo.org/records/22697248",
     "kind": "data_repo",
-    "provenance": "enregistrement Zenodo declare `restricted` par l'API le 2026-09-20 (access=restricted). Verite PARTIELLEMENT CIRCULAIRE : elle vient du meme champ que lit la sonde. Verifie la chaine, pas le jugement.",
+    "provenance": "Zenodo record declared `restricted` by the API on 2026-09-20 (access=restricted). PARTIALLY CIRCULAR truth: it comes from the same field the prober reads. Checks the pipeline, not the judgement.",
     "circular": true
   },
   {
     "url": "https://zenodo.org/records/22758431",
     "kind": "data_repo",
-    "provenance": "enregistrement Zenodo declare `embargoed` par l'API le 2026-09-20 (access=embargoed). Verite PARTIELLEMENT CIRCULAIRE : elle vient du meme champ que lit la sonde. Verifie la chaine, pas le jugement.",
+    "provenance": "Zenodo record declared `embargoed` by the API on 2026-09-20 (access=embargoed). PARTIALLY CIRCULAR truth: it comes from the same field the prober reads. Checks the pipeline, not the judgement.",
     "circular": true
   }
 ]

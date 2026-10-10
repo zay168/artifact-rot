@@ -1,19 +1,18 @@
-"""Statut final d'un lien = fonction deterministe de ses sondes (§5).
+"""A link's final status = a deterministic function of its probes (§5).
 
-Aucun jugement au cas par cas. La regle appliquee est nommee dans le resultat pour que
-chaque ligne du rapport soit auditable jusqu'a la sonde qui l'a produite.
+No case-by-case judgement. The rule applied is named in the result so that every line of
+the report can be audited down to the probe that produced it.
 
-Ordre de priorite, du plus informatif au moins informatif :
+Order of priority, from most to least informative:
 
-1. ALIVE l'emporte sur tout. Une ressource observee vivante une seule fois a une date
-   quelconque a existe : la declarer morte serait faux. C'est asymetrique a dessein —
-   un faux positif de mort detruit le projet (§4 piege 2), un faux negatif le rend
-   seulement conservateur.
-2. RESTRICTED l'emporte sur DEAD. Un acces controle est une existence confirmee.
-3. DEAD exige trois echecs sur trois dates distinctes, espacees d'au moins
-   `min_probe_span_days`. Un lien qui n'a pas subi ces trois sondes n'est pas mort :
-   il est UNKNOWN.
-4. UNKNOWN sinon. Il est compte et reporte a part, jamais au denominateur.
+1. ALIVE wins over everything. A resource observed alive once, on any date, existed:
+   declaring it dead would be false. This is asymmetric by design — a false death
+   destroys the project (§4 pitfall 2), a false life only makes it conservative.
+2. RESTRICTED wins over DEAD. Controlled access is confirmed existence.
+3. DEAD requires three failures on three distinct dates, at least
+   `min_probe_span_days` apart. A link that has not gone through these three probes is
+   not dead: it is UNKNOWN.
+4. UNKNOWN otherwise. It is counted and reported separately, never in a denominator.
 """
 
 from __future__ import annotations
@@ -24,7 +23,7 @@ from .models import LinkOutcome, Probe, Status
 
 def resolve(link_id: str, probes: list[Probe], settings: Settings) -> LinkOutcome:
     if not probes:
-        raise ValueError(f"{link_id}: aucune sonde, rien a resoudre")
+        raise ValueError(f"{link_id}: no probe, nothing to resolve")
 
     ordered = sorted(probes, key=lambda p: p.probed_at)
     first, last = ordered[0].probed_at, ordered[-1].probed_at

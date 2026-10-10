@@ -1,26 +1,25 @@
-"""E3 — moissonnage du texte integral, extraction des liens, et mesure du rappel.
+"""E3 — full-text harvesting, link extraction, and recall measurement.
 
-Critere de passage (PLAN.md §7) : **rappel verifie sur un sous-ensemble ou les liens
-sont deja connus via metadonnees structurees.**
+Pass criterion (PLAN.md §7): **recall verified on a subset where links are already known
+through structured metadata.**
 
-Le sous-ensemble ne se constitue pas a la main : il se fabrique. Tout document recupere
-porte des liens **balises par l'editeur** — annotations `/URI` d'un PDF, `<a href>` d'un
-HTML, `<ext-link>` d'un JATS. Ce balisage est la metadonnee structuree du critere. Notre
-extracteur, lui, travaille sur le texte rendu. Le rappel se mesure de l'un contre
-l'autre, sans qu'aucun humain n'ait jamais a juger quoi que ce soit — le meme principe
-que celui qui fonde le projet.
+The subset is not assembled by hand: it builds itself. Every retrieved document carries
+links **tagged by its publisher** — `/URI` annotations in a PDF, `<a href>` in HTML,
+`<ext-link>` in JATS. That markup is the structured metadata of the criterion. Our
+extractor works on the rendered text. Recall is measured one against the other, without
+any human ever having to judge anything — the same principle the project rests on.
 
-Le rappel est calcule sur les **liens d'artefacts** seulement. Le calculer sur toutes
-les URL melangerait ce qui nous interesse avec les centaines de DOI d'une bibliographie
-et donnerait un chiffre flatteur et creux.
+Recall is computed on **artifact links** only. Computing it on every URL would mix what
+we care about with the hundreds of DOIs of a bibliography and give a flattering, hollow
+figure.
 
-Usage :
-    ARTIFACT_ROT_CONTACT="vous@exemple.org" python -m artifact_rot.harvest fetch 400
-    ARTIFACT_ROT_CONTACT="vous@exemple.org" python -m artifact_rot.harvest recall
+Usage:
+    ARTIFACT_ROT_CONTACT="you@example.org" python -m artifact_rot.harvest fetch 400
+    ARTIFACT_ROT_CONTACT="you@example.org" python -m artifact_rot.harvest recall
 
-Extension x3 de la zone grise (docs/prolongation.md) :
+3x extension of the grey zone (docs/extension.md):
     python -m artifact_rot.harvest fetch-ext
-    python -m artifact_rot.harvest links-ext     # artefacts seuls
+    python -m artifact_rot.harvest links-ext     # artifacts only
 """
 
 from __future__ import annotations
@@ -50,17 +49,17 @@ HARVEST_SEED = 20260920
 RUNS = Path("runs")
 
 TRUTH_KINDS = {"pdf", "jats"}
-"""Formats dont le balisage est **a l'echelle de l'article**.
+"""Formats whose markup is **scoped to the paper**.
 
-Mesure du 2026-09-20 : sur 78 liens de depot soi-disant manques, 70 venaient de pages
-HTML, et il s'agissait du menu et du pied de page du site hote — `zenodo.org/help/...`,
-`github.com/zenodo/zenodo-rdm`. Ce ne sont pas des artefacts de l'article, ce sont les
-liens du site qui l'heberge.
+Measured on 2026-09-20: of 78 supposedly missed repository links, 70 came from HTML
+pages, and they were the host site's menu and footer — `zenodo.org/help/...`,
+`github.com/zenodo/zenodo-rdm`. Those are not artifacts of the paper but links of the
+site hosting it.
 
-Les annotations d'un PDF et les `<ext-link>` d'un JATS, elles, appartiennent au document.
-Une page HTML quelconque melange l'article et l'habillage du site, et rien de fiable ne
-les separe par regex. On ne mesure donc le rappel que la ou la verite terrain en est
-vraiment une. Le nombre de documents ecartes est reporte, jamais tu."""
+A PDF's annotations and a JATS file's `<ext-link>` elements belong to the document. An
+arbitrary HTML page mixes the paper with site chrome, and nothing reliable separates
+them by regex. Recall is therefore measured only where the ground truth really is one.
+The number of excluded documents is reported, never hidden."""
 
 
 def load_sample(sample_dir: Path) -> list[dict]:
@@ -69,10 +68,10 @@ def load_sample(sample_dir: Path) -> list[dict]:
 
 
 def pick(rows: list[dict], n: int, seed: int = HARVEST_SEED) -> list[dict]:
-    """Sous-echantillon equilibre par strate, reproductible.
+    """Subsample balanced by stratum, reproducible.
 
-    Equilibre et non proportionnel : les strates ont toutes 2 000 articles, et un
-    sous-ensemble desequilibre rendrait le rappel par discipline illisible.
+    Balanced rather than proportional: every stratum has 2,000 papers, and an unbalanced
+    subset would make per-discipline recall unreadable.
     """
     by: dict[str, list[dict]] = collections.defaultdict(list)
     for row in rows:
@@ -98,12 +97,12 @@ def pick_extension(
     per_stratum: int = EXTENSION_PER_STRATUM,
     seed: int = EXTENSION_SEED,
 ) -> list[dict]:
-    """L'extension x3 de la zone grise (docs/prolongation.md §4).
+    """The 3x extension of the grey zone (docs/extension.md §4).
 
-    Tiree parmi les articles **pas encore moissonnes** de chaque strate, avec une graine
-    distincte. Rappeler `pick` avec un effectif triple ne donnerait pas un sur-ensemble des
-    2 000 premiers : `random.sample` ne garantit pas qu'un tirage de 300 commence par celui
-    de 100. On perdrait les liens deja sondes trois fois.
+    Drawn from papers **not yet harvested** in each stratum, with a distinct seed.
+    Calling `pick` again with three times the size would not give a superset of the first
+    2,000: `random.sample` does not guarantee that a draw of 300 starts with the draw of
+    100. Links already probed three times would be lost.
     """
     taken = {r["openalex_id"] for r in already}
     by: dict[str, list[dict]] = collections.defaultdict(list)
@@ -130,7 +129,7 @@ def _client(settings: Settings) -> httpx.Client:
 
 
 def fetch(rows: list[dict], settings: Settings) -> dict:
-    """Recupere et met en cache le texte integral. Le cache n'est jamais reecrit."""
+    """Retrieve and cache full text. The cache is never rewritten."""
     stats: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
 
     with _client(settings) as client:
@@ -149,9 +148,9 @@ def fetch(rows: list[dict], settings: Settings) -> dict:
 
             key = row["stratum"]
             stats[key]["n"] += 1
-            stats[key][doc.kind if doc.ok else "echec"] += 1
+            stats[key][doc.kind if doc.ok else "failed"] += 1
             if not doc.ok:
-                stats[key][f"cause:{(doc.error or 'inconnu').split(':')[0]}"] += 1
+                stats[key][f"cause:{(doc.error or 'unknown').split(':')[0]}"] += 1
             if i % 25 == 0:
                 print(f"  {i}/{len(rows)}", file=sys.stderr)
 
@@ -159,16 +158,16 @@ def fetch(rows: list[dict], settings: Settings) -> dict:
 
 
 def recall(rows: list[dict]) -> dict:
-    """Rappel de l'extraction textuelle contre le balisage editorial.
+    """Recall of text extraction against publisher markup.
 
-    Trois populations, a ne pas confondre :
+    Three populations, not to be confused:
 
-    * `truth`   — liens d'artefacts balises par l'editeur (verite terrain) ;
-    * `found`   — liens d'artefacts trouves dans le texte rendu ;
-    * `extra`   — trouves dans le texte mais absents du balisage. Ce ne sont pas des
-                  faux positifs : un lien ecrit en clair et non balise est un vrai lien.
-                  Ils sont comptes a part, parce qu'ils mesurent ce que l'approche
-                  purement structuree perdrait.
+    * `truth`   — artifact links tagged by the publisher (ground truth);
+    * `found`   — artifact links found in the rendered text;
+    * `extra`   — found in the text but absent from the markup. These are not false
+                  positives: a link written in plain text and not tagged is a real link.
+                  They are counted separately because they measure what a purely
+                  structured approach would lose.
     """
     per_stratum: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
     per_family: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
@@ -189,10 +188,10 @@ def recall(rows: list[dict]) -> dict:
             canonicalize(raw) for _, raw in iter_raw_links(doc.text) if is_artifact_link(raw)
         }
 
-        # Les deux familles sont separees parce qu'elles ne disent pas la meme chose.
-        # Un article cite des dizaines de DOI dans sa bibliographie : un rappel global
-        # serait porte par eux et masquerait la performance sur les depots, qui sont la
-        # population que le projet mesure.
+        # The two families are kept apart because they do not say the same thing. A
+        # paper cites dozens of DOIs in its bibliography: an overall recall would be
+        # driven by them and would hide performance on repositories, which are the
+        # population the project measures.
         for family in ("repo_host", "doi"):
             t = {u for u in truth if _family(u) == family}
             f = {u for u in found if _family(u) == family}
@@ -253,8 +252,8 @@ def recall(rows: list[dict]) -> dict:
 
 
 def _family(url: str) -> str:
-    """`repo_host` = depot identifiable (GitHub, Zenodo, OSF…). `doi` = tout le reste,
-    c'est-a-dire l'immense majorite des DOI d'une bibliographie."""
+    """`repo_host` = identifiable repository (GitHub, Zenodo, OSF…). `doi` = everything
+    else, i.e. the vast majority of a bibliography's DOIs."""
     from .extract.links import ARTIFACT_HOSTS
     from .extract.normalize import host_of
 
@@ -262,7 +261,7 @@ def _family(url: str) -> str:
 
 
 def links_of(rows: list[dict]) -> list[dict]:
-    """Les liens extraits de tout le sous-ensemble, prets a etre sondes."""
+    """Links extracted from the whole subset, ready to be probed."""
     out: list[dict] = []
     for row in rows:
         doc = load(row["openalex_id"])
@@ -276,8 +275,8 @@ def links_of(rows: list[dict]) -> list[dict]:
             discipline=row["discipline"],
             publisher=row["publisher"],
             structured_urls=doc.structured_urls,
-            # L'habillage de site n'est un probleme que pour le HTML : les annotations
-            # d'un PDF appartiennent au document.
+            # Site chrome is only a problem for HTML: a PDF's annotations belong to the
+            # document.
             chrome_host=host_of(doc.source_url) if doc.kind == "html" else None,
         )
         for link in links:
@@ -292,12 +291,12 @@ def main(argv: list[str] | None = None) -> int:
     try:
         settings = Settings.from_env()
     except ConfigError as exc:
-        print(f"erreur de configuration : {exc}", file=sys.stderr)
+        print(f"configuration error: {exc}", file=sys.stderr)
         return 2
 
     sample_dir = latest_sample_dir()
     if sample_dir is None:
-        print("aucun echantillon : lancer `python -m artifact_rot.sample build`", file=sys.stderr)
+        print("no sample: run `python -m artifact_rot.sample build`", file=sys.stderr)
         return 2
     sample = load_sample(sample_dir)
     if command.endswith("-ext"):
@@ -305,17 +304,17 @@ def main(argv: list[str] | None = None) -> int:
         command = command.removesuffix("-ext")
     else:
         rows = pick(sample, int(args[1]) if len(args) > 1 else 400)
-    # L'extension ne sonde que les artefacts (docs/prolongation.md §4.3).
+    # The extension probes artifacts only (docs/extension.md §4.3).
     artifacts_only = len(args) > 0 and args[0] == "links-ext"
 
     if command == "fetch":
-        print(f"E3 — moissonnage de {len(rows)} articles", file=sys.stderr)
+        print(f"E3 — harvesting {len(rows)} papers", file=sys.stderr)
         stats = fetch(rows, settings)
         total = sum(s["n"] for s in stats.values())
-        ok = total - sum(s.get("echec", 0) for s in stats.values())
-        print(f"texte integral obtenu : {ok}/{total} ({100 * ok / total:.0f} %)")
+        ok = total - sum(s.get("failed", 0) for s in stats.values())
+        print(f"full text obtained: {ok}/{total} ({100 * ok / total:.0f}%)")
         for key, s in stats.items():
-            got = s["n"] - s.get("echec", 0)
+            got = s["n"] - s.get("failed", 0)
             print(f"  {key:<28} {got:>3}/{s['n']:<3} pdf={s.get('pdf', 0):>3} "
                   f"html={s.get('html', 0):>2} jats={s.get('jats', 0):>2}")
         _write(RUNS / _stamp("harvest") / "coverage.json", stats)
@@ -324,34 +323,34 @@ def main(argv: list[str] | None = None) -> int:
     if command == "recall":
         report = recall(rows)
         if not report["truth"]:
-            print("aucun lien d'artefact balise : lancer `fetch` d'abord", file=sys.stderr)
+            print("no tagged artifact link: run `fetch` first", file=sys.stderr)
             return 2
-        print("E3 — rappel contre le balisage editorial")
-        print(f"  documents exploites      : {report['docs']}  (PDF et JATS seuls)")
-        print(f"  pages HTML ecartees      : {report['docs_skipped_html']}")
-        print(f"  dont porteurs d'artefact : {report['docs_with_truth']}")
-        print(f"  liens balises (verite)   : {report['truth']}")
-        print(f"  retrouves dans le texte  : {report['hit']}")
-        print(f"  RAPPEL                   : {report['recall']}")
-        print(f"  trouves hors balisage    : {report['extra']}")
+        print("E3 — recall against publisher markup")
+        print(f"  documents used           : {report['docs']}  (PDF and JATS only)")
+        print(f"  HTML pages excluded      : {report['docs_skipped_html']}")
+        print(f"  carrying artifacts       : {report['docs_with_truth']}")
+        print(f"  tagged links (truth)     : {report['truth']}")
+        print(f"  found in the text        : {report['hit']}")
+        print(f"  RECALL                   : {report['recall']}")
+        print(f"  found outside markup     : {report['extra']}")
         for family, f in report["by_family"].items():
             print(
-                f"    {family:<10} verite={f['truth']:>5}  rappel={f['recall']}  "
-                f"hors balisage={f['extra']}"
+                f"    {family:<10} truth={f['truth']:>5}  recall={f['recall']}  "
+                f"outside markup={f['extra']}"
             )
         if report["miss_hosts"]:
-            print("  hotes les plus manques   :")
+            print("  most-missed hosts        :")
             for host, n in list(report["miss_hosts"].items())[:6]:
                 print(f"      {n:>4}  {host}")
         out = RUNS / _stamp("recall") / "recall.json"
         _write(out, report)
-        print(f"  rapport : {out}")
+        print(f"  report: {out}")
         return 0
 
     if command == "links":
         links = links_of(rows)
         if artifacts_only:
-            print(f"extension : {len(links)} liens extraits, artefacts seuls conserves")
+            print(f"extension: {len(links)} links extracted, artifacts only kept")
             links = [link for link in links if link["kind"] in ARTIFACT_KINDS]
         out = RUNS / _stamp("links-ext" if artifacts_only else "links") / "links.jsonl"
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -360,19 +359,19 @@ def main(argv: list[str] | None = None) -> int:
                 fh.write(json.dumps(link, ensure_ascii=False, default=str, sort_keys=True) + "\n")
         kinds = collections.Counter(link["kind"] for link in links)
         sources = collections.Counter(link["source"] for link in links)
-        print(f"{len(links)} liens extraits -> {out}")
-        print("  par type     :", dict(kinds.most_common()))
-        print("  par provenance:", dict(sources.most_common()))
+        print(f"{len(links)} links extracted -> {out}")
+        print("  by kind      :", dict(kinds.most_common()))
+        print("  by provenance:", dict(sources.most_common()))
         on_request = sum(
             count_on_request(doc.text)
             for doc in (load(r["openalex_id"]) for r in rows)
             if doc is not None and doc.ok
         )
-        print(f"  « sur demande » (jamais sonde, §4 piege 4) : {on_request}")
+        print(f"  \"on request\" (never probed, §4 pitfall 4): {on_request}")
         return 0
 
     print(
-        f"commande inconnue : {command!r} (fetch | recall | links | fetch-ext | links-ext)",
+        f"unknown command: {command!r} (fetch | recall | links | fetch-ext | links-ext)",
         file=sys.stderr,
     )
     return 2

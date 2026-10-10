@@ -1,13 +1,12 @@
-"""Socle des sondes. Piege 1 (§4) : le code HTTP ment.
+"""Prober foundation. Pitfall 1 (§4): the HTTP code lies.
 
-Regle structurante : pour tout hebergeur qui expose une API, on interroge l'API et
-jamais le HTML. Une API repond sans ambiguite sur l'existence ; une page HTML peut
-rendre un 200 sur « depot introuvable », ou un 403 Cloudflare sur une ressource
-parfaitement vivante.
+Structuring rule: for any host that exposes an API, we query the API and never the HTML.
+An API answers unambiguously about existence; an HTML page can return a 200 on
+"repository not found", or a Cloudflare 403 on a perfectly live resource.
 
-Chaque sonde renvoie un `ProbeResult` portant, en plus du statut, la raison nommee de
-la classification. Sans cette raison, un desaccord sur un chiffre publie est
-inarbitrable.
+Each prober returns a `ProbeResult` carrying, besides the status, the named reason for
+the classification. Without that reason, a disagreement over a published figure cannot be
+arbitrated.
 """
 
 from __future__ import annotations
@@ -27,24 +26,24 @@ class ProbeResult:
     status: Status
     method: Literal["api", "http"]
     reason: str
-    """Identifiant court et stable de la regle appliquee, ex. `github_api_404`.
-    Teste directement par le jeu de controle E2."""
+    """Short, stable identifier of the rule applied, e.g. `github_api_404`.
+    Tested directly by the E2 control set."""
     evidence: dict[str, Any] = field(default_factory=dict)
 
 
 class Prober(abc.ABC):
-    """Une sonde specialisee pour une famille d'hebergeurs."""
+    """A prober specialised for one family of hosts."""
 
     name: str
     method: Literal["api", "http"] = "api"
 
     @abc.abstractmethod
     def handles(self, link: Link) -> bool:
-        """Vrai si cette sonde sait repondre de facon non ambigue sur ce lien."""
+        """True if this prober can answer unambiguously about this link."""
 
     @abc.abstractmethod
     def check(self, client: httpx.Client, link: Link, settings: Settings) -> ProbeResult:
-        """Sonde le lien. Ne leve jamais : une erreur reseau devient UNKNOWN."""
+        """Probe the link. Never raises: a network error becomes UNKNOWN."""
 
     def _unknown(self, reason: str, **evidence: Any) -> ProbeResult:
         return ProbeResult(Status.UNKNOWN, self.method, reason, evidence)
@@ -65,8 +64,8 @@ def build_client(settings: Settings) -> httpx.Client:
 
 
 def classify_transport_error(exc: Exception) -> tuple[str, dict[str, Any]]:
-    """Traduit une exception reseau en raison nommee. Tout cela finit en UNKNOWN :
-    un echec du crawler n'est pas un echec du lien (§4 piege 2)."""
+    """Translate a network exception into a named reason. All of it ends up UNKNOWN: a
+    crawler failure is not a link failure (§4 pitfall 2)."""
     if isinstance(exc, httpx.TimeoutException):
         return "transport_timeout", {"error": type(exc).__name__}
     if isinstance(exc, httpx.ConnectError):
@@ -79,10 +78,10 @@ def classify_transport_error(exc: Exception) -> tuple[str, dict[str, Any]]:
 
 
 class ProberRegistry:
-    """Selection de la sonde : premiere qui declare savoir repondre.
+    """Prober selection: the first one that declares it can answer.
 
-    L'ordre compte. Les sondes d'API passent avant la sonde HTTP generique, qui est un
-    filet de securite et non un choix par defaut.
+    Order matters. API probers come before the generic HTTP prober, which is a safety net
+    and not a default choice.
     """
 
     def __init__(self, probers: list[Prober]) -> None:
@@ -92,13 +91,13 @@ class ProberRegistry:
         for prober in self._probers:
             if prober.handles(link):
                 return prober
-        raise LookupError(f"aucune sonde pour {link.normalized!r} (host={link.host!r})")
+        raise LookupError(f"no prober for {link.normalized!r} (host={link.host!r})")
 
     def check(self, client: httpx.Client, link: Link, settings: Settings) -> ProbeResult:
         prober = self.select(link)
         try:
             return prober.check(client, link, settings)
-        except Exception as exc:  # noqa: BLE001 — une sonde ne fait jamais tomber un run
+        except Exception as exc:  # noqa: BLE001 — a prober never brings down a run
             reason, evidence = classify_transport_error(exc)
             return ProbeResult(Status.UNKNOWN, prober.method, reason, evidence)
 
@@ -106,5 +105,5 @@ class ProberRegistry:
 def truncate_body(response: httpx.Response, settings: Settings) -> str:
     try:
         return response.text[: settings.body_evidence_bytes]
-    except Exception:  # noqa: BLE001 — la preuve est optionnelle, la sonde ne l'est pas
+    except Exception:  # noqa: BLE001 — evidence is optional, the probe is not
         return ""

@@ -1,8 +1,7 @@
-"""Contrats de donnees. Definis au §5 du PLAN.md et figes ici.
+"""Data contracts. Defined in PLAN.md §5 and frozen here.
 
-Toute modification d'un de ces modeles invalide les runs anterieurs : un run est
-immuable (§5), donc un changement de schema impose un nouveau repertoire de run,
-jamais une reecriture.
+Any change to one of these models invalidates earlier runs: a run is immutable (§5), so
+a schema change requires a new run directory, never a rewrite.
 """
 
 from __future__ import annotations
@@ -16,14 +15,15 @@ from pydantic import BaseModel, Field
 
 
 class Status(StrEnum):
-    """Les quatre etats du piege 2 (§4). Jamais deux, jamais trois.
+    """The four states of pitfall 2 (§4). Never two, never three.
 
-    ALIVE      : l'existence de la ressource est positivement confirmee.
-    DEAD       : l'inexistence est positivement confirmee (404 d'API, 410, DOI non enregistre).
-    RESTRICTED : la ressource existe mais l'acces est controle (401/403 authentifiable,
-                 depot prive avere, embargo). Cas legitime, frequent en medecine.
-    UNKNOWN    : le crawler a echoue (timeout, 429, 5xx, DNS, TLS, robots.txt interdit).
-                 N'entre JAMAIS au denominateur d'un taux publie.
+    ALIVE      : the resource's existence is positively confirmed.
+    DEAD       : its non-existence is positively confirmed (API 404, 410, unregistered DOI).
+    RESTRICTED : the resource exists but access is controlled (authenticable 401/403,
+                 confirmed private repository, embargo). A legitimate case, frequent in
+                 medicine.
+    UNKNOWN    : the crawler failed (timeout, 429, 5xx, DNS, TLS, forbidden by robots.txt).
+                 NEVER enters the denominator of a published rate.
     """
 
     ALIVE = "alive"
@@ -36,91 +36,91 @@ LinkKind = Literal[
     "code_repo",
     "data_repo",
     "dataset_doi",
-    "citation_doi",  # DOI d'un article cite : une reference, pas un artefact. Voir ci-dessous.
+    "citation_doi",  # DOI of a cited paper: a reference, not an artifact. See below.
     "generic_url",
-    "on_request",  # piege 4 : « available upon request » n'est pas un lien, jamais sonde
+    "on_request",  # pitfall 4: "available upon request" is not a link, never probed
 ]
-"""**Ecart assume au PLAN.md §5** : le type `citation_doi` est ajoute.
+"""**Deliberate deviation from PLAN.md §5**: the `citation_doi` type is added.
 
-Le plan liste `dataset_doi` parmi les types suivis. Sans distinction supplementaire, ce
-type absorbait **tout** DOI rencontre, dont les milliers de DOI d'articles cites en
-bibliographie — 3 449 liens sur 8 073 extraits de 400 articles.
+The plan lists `dataset_doi` among the tracked types. Without a further distinction,
+this type absorbed **every** DOI encountered, including the thousands of DOIs of papers
+cited in bibliographies — 3,449 links out of 8,073 extracted from 400 papers.
 
-Les compter comme artefacts aurait produit un taux de survie excellent et faux, porte
-par une population qui n'est pas celle du projet : un DOI d'article est maintenu par son
-editeur, il ne meurt pas. Voir `extract/normalize.DATASET_DOI_PREFIXES`."""
+Counting them as artifacts would have produced an excellent and false survival rate,
+carried by a population that is not the project's: a paper's DOI is maintained by its
+publisher, it does not die. See `extract/normalize.DATASET_DOI_PREFIXES`."""
 
 LinkSource = Literal["availability_statement", "body", "references"]
-"""D'ou vient le lien dans l'article.
+"""Where the link comes from within the paper.
 
-`references` est isole a cause du mode d'echec n°1 de metacheck (issue #411) : un DOI
-de depot cite uniquement en bibliographie est invisible si l'on exclut cette section,
-mais l'inclure cree un risque de fausse attribution (le depot peut appartenir a un
-article cite, pas a l'article courant). On extrait, on marque, et le rapport peut
-trancher a posteriori. Voir docs/etat-de-lart.md §2.2.
+`references` is kept separate because of metacheck failure mode no. 1 (issue #411): a
+repository DOI cited only in the bibliography is invisible if that section is excluded,
+but including it creates a misattribution risk (the repository may belong to a cited
+paper, not the current one). We extract, flag, and let the report decide afterwards.
+See docs/related-work.md §2.2.
 """
 
 
 class Link(BaseModel):
-    """Un lien d'artefact extrait d'un article. Une ligne = une promesse faite par un article.
+    """An artifact link extracted from a paper. One row = one promise made by a paper.
 
-    **Ecart assume au PLAN.md §5**, decide a E1 le 2026-09-20 : le plan donne
-    `paper_doi: str` comme cle. La mesure sur l'echantillon montre que 6,8 % des articles
-    tires n'ont pas de DOI dans OpenAlex, et que le manque est **fortement correle a
-    l'age** — 44 % en informatique 2010 contre 4 % en 2025. Filtrer sur la presence d'un
-    DOI aurait donc introduit un biais de selection portant precisement sur la variable
-    explicative principale du projet. La cle devient l'identifiant OpenAlex, stable et
-    universel sur l'echantillon ; le DOI reste porte quand il existe, parce que c'est lui
-    qui parle aux editeurs et aux lecteurs.
+    **Deliberate deviation from PLAN.md §5**, decided at E1 on 2026-09-20: the plan uses
+    `paper_doi: str` as the key. Measurement on the sample shows that 6.8% of drawn
+    papers have no DOI in OpenAlex, and that the gap is **strongly correlated with age**
+    — 44% in computer science 2010 against 4% in 2025. Filtering on the presence of a DOI
+    would therefore have introduced a selection bias on precisely the project's main
+    explanatory variable. The key becomes the OpenAlex identifier, stable and universal
+    across the sample; the DOI is kept when it exists, because it is what speaks to
+    publishers and readers.
     """
 
     paper_id: str
-    """Identifiant OpenAlex (`W…`). Cle primaire : present sur 100 % de l'echantillon."""
+    """OpenAlex identifier (`W…`). Primary key: present on 100% of the sample."""
     paper_doi: str | None = None
     paper_year: int
     discipline: str
     publisher: str
     raw: str
-    """Tel qu'ecrit dans l'article, avant toute normalisation. Preuve : sans lui, on ne
-    peut pas arbitrer une contestation sur l'extraction."""
+    """As written in the paper, before any normalisation. Evidence: without it, a dispute
+    about extraction cannot be arbitrated."""
     normalized: str
     kind: LinkKind
     host: str
     source: LinkSource = "availability_statement"
     malformed_at_source: bool = False
-    """Piege 3 (§4) : casse des la publication, n'a jamais fonctionne. Categorie
-    differente d'un lien mort. Mesure le controle editorial, pas le rot."""
+    """Pitfall 3 (§4): broken from publication, never worked. A different category from a
+    dead link. Measures editorial control, not rot."""
 
     @property
     def link_id(self) -> str:
-        """Identifiant deterministe et stable entre runs."""
+        """Deterministic identifier, stable across runs."""
         payload = f"{self.paper_id}\x1f{self.normalized}\x1f{self.kind}"
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
 class Probe(BaseModel):
-    """Une sonde, c'est-a-dire une observation datee de l'etat d'un lien."""
+    """A probe, i.e. a dated observation of a link's state."""
 
     link_id: str
     probed_at: datetime
     method: Literal["api", "http"]
     status: Status
     evidence: dict[str, Any] = Field(default_factory=dict)
-    """Code HTTP, corps tronque, reponse d'API, raison de classification. §5 : toute
-    preuve conservee, sinon une contestation est inarbitrable."""
+    """HTTP code, truncated body, API response, classification reason. §5: all evidence
+    is kept, otherwise a dispute cannot be arbitrated."""
     attempt: int = Field(ge=1, le=3)
 
 
 class LinkOutcome(BaseModel):
-    """Statut final d'un lien, fonction deterministe de ses sondes. Voir `resolve`."""
+    """Final status of a link, a deterministic function of its probes. See `resolve`."""
 
     link_id: str
     status: Status
     rule: str
-    """Nom de la regle appliquee. Rend la decision auditable ligne a ligne."""
+    """Name of the rule applied. Makes the decision auditable line by line."""
     probes: list[Probe]
     first_probe_at: datetime
     last_probe_at: datetime
     right_censored: bool
-    """§6 : un lien encore vivant aujourd'hui est une observation censuree a droite,
-    pas un succes definitif. Le champ existe des maintenant, pas rattrape apres."""
+    """§6: a link still alive today is a right-censored observation, not a definitive
+    success. The field exists from the start, not patched in later."""

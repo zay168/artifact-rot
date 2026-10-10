@@ -1,9 +1,9 @@
-"""Sondes des depots de donnees a API : Zenodo, Figshare, OSF, Dryad.
+"""Probers for data repositories with an API: Zenodo, Figshare, OSF, Dryad.
 
-Ces hebergeurs sont les seuls cas ou `restricted` est frequent et legitime : un depot
-sous embargo ou sous acces controle existe, il resout, il n'est simplement pas
-telechargeable. Le compter mort serait faux ; le compter vivant sans le dire serait
-trompeur. D'ou la quatrieme categorie du §4.
+These hosts are the only cases where `restricted` is frequent and legitimate: an
+embargoed or access-controlled deposit exists, it resolves, it simply cannot be
+downloaded. Counting it dead would be wrong; counting it alive without saying so would be
+misleading. Hence the fourth category of §4.
 """
 
 from __future__ import annotations
@@ -45,7 +45,7 @@ class ZenodoProber(Prober):
         if r.status_code in (404, 410):
             return ProbeResult(Status.DEAD, "api", f"zenodo_api_{r.status_code}", ev)
         if r.status_code in (401, 403):
-            # Zenodo renvoie 403 sur un enregistrement restreint, qui existe bel et bien.
+            # Zenodo returns 403 on a restricted record, which does exist.
             return ProbeResult(Status.RESTRICTED, "api", "zenodo_api_forbidden", ev)
         if r.status_code == 429:
             return ProbeResult(Status.UNKNOWN, "api", "zenodo_rate_limited", ev)
@@ -78,7 +78,7 @@ class OSFProber(Prober):
             return ProbeResult(Status.ALIVE, "api", "osf_api_200", ev)
 
         if r.status_code in (401, 403):
-            # OSF distingue reellement prive (403) de supprime (404, 410).
+            # OSF genuinely distinguishes private (403) from deleted (404, 410).
             return ProbeResult(Status.RESTRICTED, "api", "osf_api_forbidden", ev)
         if r.status_code in (404, 410):
             return ProbeResult(Status.DEAD, "api", f"osf_api_{r.status_code}", ev)

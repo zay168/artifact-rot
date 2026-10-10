@@ -1,7 +1,7 @@
-"""La regle de resolution est le point ou un bug devient une falsification.
+"""The resolution rule is where a bug becomes a falsification.
 
-Un echec de crawl converti en « lien mort » detruirait le projet (§4, piege 2). Ces
-tests existent pour que cette conversion soit impossible sans casser la suite.
+A crawl failure converted into a "dead link" would destroy the project (§4, pitfall 2).
+These tests exist so that this conversion is impossible without breaking the suite.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ T0 = datetime(2026, 9, 1, 12, 0, tzinfo=UTC)
 
 
 def probes(*specs: tuple[Status, int]) -> list[Probe]:
-    """(statut, jour) -> sondes numerotees dans l'ordre chronologique."""
+    """(status, day) -> probes numbered in chronological order."""
     return [
         Probe(
             link_id="abc",
@@ -32,59 +32,59 @@ def probes(*specs: tuple[Status, int]) -> list[Probe]:
     ]
 
 
-class TestDeadExigeTroisEchecsEspaces:
-    def test_trois_echecs_sur_trois_dates_espacees(self) -> None:
+class TestDeadRequiresThreeSpacedFailures:
+    def test_three_failures_on_three_spaced_dates(self) -> None:
         out = resolve("abc", probes((Status.DEAD, 0), (Status.DEAD, 7), (Status.DEAD, 14)), SETTINGS)
         assert out.status is Status.DEAD
         assert out.rule == "dead_three_failures_three_dates"
 
-    def test_trois_echecs_le_meme_jour_ne_suffisent_pas(self) -> None:
-        """« jamais dans la meme minute » — trois sondes rapprochees ne sont qu'une."""
+    def test_three_failures_on_the_same_day_are_not_enough(self) -> None:
+        """"never in the same minute" — three close probes are only one."""
         out = resolve("abc", probes((Status.DEAD, 0), (Status.DEAD, 0), (Status.DEAD, 0)), SETTINGS)
         assert out.status is Status.UNKNOWN
         assert out.rule == "insufficient_evidence"
 
-    def test_trois_echecs_trop_rapproches(self) -> None:
+    def test_three_failures_too_close(self) -> None:
         out = resolve("abc", probes((Status.DEAD, 0), (Status.DEAD, 1), (Status.DEAD, 2)), SETTINGS)
         assert out.status is Status.UNKNOWN
 
-    def test_deux_echecs_ne_suffisent_pas(self) -> None:
+    def test_two_failures_are_not_enough(self) -> None:
         out = resolve("abc", probes((Status.DEAD, 0), (Status.DEAD, 14)), SETTINGS)
         assert out.status is Status.UNKNOWN
 
 
-class TestAliveLEmportre:
+class TestAliveWins:
     @pytest.mark.parametrize("day", [0, 7, 14])
-    def test_une_seule_observation_vivante_suffit(self, day: int) -> None:
+    def test_a_single_live_observation_is_enough(self, day: int) -> None:
         specs = [(Status.DEAD, 0), (Status.DEAD, 7), (Status.DEAD, 14)]
         specs[[0, 7, 14].index(day)] = (Status.ALIVE, day)
         out = resolve("abc", probes(*specs), SETTINGS)
         assert out.status is Status.ALIVE
         assert out.rule == "alive_once_wins"
 
-    def test_alive_est_censure_a_droite(self) -> None:
+    def test_alive_is_right_censored(self) -> None:
         out = resolve("abc", probes((Status.ALIVE, 0)), SETTINGS)
         assert out.right_censored is True
 
-    def test_dead_n_est_pas_censure(self) -> None:
+    def test_dead_is_not_censored(self) -> None:
         out = resolve("abc", probes((Status.DEAD, 0), (Status.DEAD, 7), (Status.DEAD, 14)), SETTINGS)
         assert out.right_censored is False
 
 
 class TestRestricted:
-    def test_restricted_l_emporte_sur_dead(self) -> None:
+    def test_restricted_wins_over_dead(self) -> None:
         out = resolve(
             "abc", probes((Status.DEAD, 0), (Status.RESTRICTED, 7), (Status.DEAD, 14)), SETTINGS
         )
         assert out.status is Status.RESTRICTED
         assert out.rule == "restricted_over_dead"
 
-    def test_alive_l_emporte_sur_restricted(self) -> None:
+    def test_alive_wins_over_restricted(self) -> None:
         out = resolve("abc", probes((Status.RESTRICTED, 0), (Status.ALIVE, 7)), SETTINGS)
         assert out.status is Status.ALIVE
 
 
-class TestUnknownNeDevientJamaisDead:
+class TestUnknownNeverBecomesDead:
     @pytest.mark.parametrize(
         "specs",
         [
@@ -93,11 +93,11 @@ class TestUnknownNeDevientJamaisDead:
             ((Status.DEAD, 0), (Status.UNKNOWN, 7), (Status.DEAD, 14)),
         ],
     )
-    def test_reste_unknown(self, specs) -> None:
+    def test_stays_unknown(self, specs) -> None:
         out = resolve("abc", probes(*specs), SETTINGS)
         assert out.status is Status.UNKNOWN
 
 
-def test_aucune_sonde_est_une_erreur() -> None:
+def test_no_probe_is_an_error() -> None:
     with pytest.raises(ValueError):
         resolve("abc", [], SETTINGS)

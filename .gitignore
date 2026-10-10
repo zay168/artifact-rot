@@ -6,12 +6,12 @@ __pycache__/
 *.egg-info/
 .env
 
-# Les runs sont immuables et jamais nettoyes (PLAN.md §5), mais ils ne sont pas
-# versionnes par defaut : ils peuvent peser lourd et sont publies separement avec
-# le rapport. Le repertoire lui-meme est conserve.
+# Runs are immutable and never cleaned (PLAN.md §5), but they are not versioned by
+# default: they can be heavy and are published separately with the report. The
+# directory itself is kept.
 runs/*
 !runs/.gitkeep
 
-# Cache de textes integraux : volumineux, reconstructible, non versionne.
+# Full-text cache: bulky, rebuildable, not versioned.
 data/fulltext/
 data/queue.sqlite3*

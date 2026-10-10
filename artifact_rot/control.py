@@ -1,30 +1,29 @@
-"""E2 — jeu de controle a verite connue **par construction**.
+"""E2 — control set with ground truth known **by construction**.
 
-C'est le premier code du projet et son test de sante (§2, §7). Si la classification
-n'atteint pas 98 % ici, aucun chiffre produit ensuite ne vaut rien, et le plan impose
-de s'arreter plutot que de continuer.
+This is the project's first code and its health check (§2, §7). If classification does
+not reach 98% here, no figure produced afterwards is worth anything, and the plan
+requires stopping rather than carrying on.
 
-Le principe est celui qui fonde le projet entier : la verite terrain ne s'annote pas,
-elle se fabrique. Quatre familles de cas, chacune vraie par construction et non par
-jugement :
+The principle is the one the whole project rests on: ground truth is not annotated, it
+is built. Several families of cases, each true by construction rather than by judgement:
 
-* `dead`       — URL sur un hebergeur reel, dans un espace de noms garanti inexistant
-                 (identifiant aleatoire de 128 bits). La probabilite de collision est
-                 nulle a toute echelle pratique.
-* `alive`      — ressources publiques, stables, massivement referencees. Leur
-                 disparition pendant un run serait elle-meme une information, et le
-                 rapport de controle la signalerait comme telle.
-* `malformed`  — URL syntaxiquement cassees, evaluees hors ligne : aucune requete
-                 reseau n'intervient, donc aucune incertitude.
-* `restricted` — la seule famille qui ne se fabrique pas toute seule : il faut posseder
-                 une ressource reellement privee ou sous embargo. Elle est donc fournie
-                 par un fichier de provisionnement (voir `docs/jeu-de-controle.md`).
-                 **Sans elle, le score global n'est pas emis** : annoncer 98 % en ayant
-                 silencieusement omis la categorie la plus difficile serait precisement
-                 le genre d'approximation que le §0 interdit.
+* `dead`       — URL on a real host, in a namespace guaranteed not to exist (128-bit
+                 random identifier). The probability of collision is nil at any
+                 practical scale.
+* `alive`      — public, stable, widely referenced resources. Their disappearance during
+                 a run would itself be information, and the control report would flag it
+                 as such.
+* `malformed`  — syntactically broken URLs, evaluated offline: no network request is
+                 involved, hence no uncertainty.
+* `restricted` — the only family that does not build itself: one must own a genuinely
+                 private or embargoed resource, or find an independent record of one. It
+                 is provided by a provisioning file (see `docs/control-set.md`).
+                 **Without it, no overall score is issued**: announcing 98% while silently
+                 omitting the hardest category would be precisely the kind of
+                 approximation §0 forbids.
 
-Usage :
-    ARTIFACT_ROT_CONTACT="vous@exemple.org" python -m artifact_rot.control
+Usage:
+    ARTIFACT_ROT_CONTACT="you@example.org" python -m artifact_rot.control
 """
 
 from __future__ import annotations
@@ -43,14 +42,14 @@ from .models import Link, Status
 from .probe import build_client, default_registry
 
 CONTROL_SEED = 20260920
-"""Graine figee. Rejouer le jeu de controle doit redonner exactement les memes URL."""
+"""Fixed seed. Replaying the control set must return exactly the same URLs."""
 
 RESTRICTED_FIXTURES = Path("data/control/restricted.json")
 TARGET_ACCURACY = 0.98
 
-# --- Cas `alive` : ressources publiques stables ------------------------------------
-# Choisies pour leur permanence institutionnelle, pas pour leur popularite. Chacune est
-# adossee a une organisation qui survivra au projet.
+# --- `alive` cases: stable public resources ----------------------------------------
+# Chosen for their institutional permanence, not their popularity. Each is backed by an
+# organisation that will outlive the project.
 KNOWN_ALIVE: list[tuple[str, str]] = [
     ("code_repo", "https://github.com/torvalds/linux"),
     ("code_repo", "https://github.com/python/cpython"),
@@ -70,21 +69,21 @@ KNOWN_ALIVE: list[tuple[str, str]] = [
     ("generic_url", "https://archive.softwareheritage.org/"),
 ]
 
-# --- Cas `waf` : hotes derriere un pare-feu applicatif -----------------------------
-# Ajoutes apres le premier run reel, qui a montre qu'openalex.org repond 403 Cloudflare
-# a un robot. Ce n'est pas un defaut des sondes : c'est exactement le cas du §4, piege 1
-# (« un 403 peut etre Cloudflare, pas une suppression »). La bonne reponse est `unknown`,
-# et elle doit etre verifiee comme telle plutot que subie comme une erreur de score.
+# --- `waf` cases: hosts behind a web application firewall ------------------------
+# Added after the first real run, which showed that openalex.org answers 403
+# (Cloudflare) to a crawler. This is not a probe defect: it is exactly the case of §4,
+# pitfall 1 ("a 403 can be Cloudflare, not a deletion"). The correct answer is
+# `unknown`, and it must be checked as such rather than suffered as a scoring error.
 #
-# Ces cas servent donc a prouver que le crawler *refuse de conclure* quand il est bloque.
-# Une regression qui les ferait basculer en `dead` serait la falsification que le plan
-# designe comme l'erreur fatale.
+# These cases therefore prove that the crawler *refuses to conclude* when blocked. A
+# regression that flipped them to `dead` would be the falsification the plan names as
+# the fatal error.
 WAF_CASES: list[tuple[str, str]] = [
     ("generic_url", "https://openalex.org/"),
     ("generic_url", "https://openalex.org/artifact-rot-absent-{t}"),
 ]
 
-# --- Cas `dead` : hebergeurs reels, espaces de noms garantis vides -----------------
+# --- `dead` cases: real hosts, namespaces guaranteed empty --------------------------
 DEAD_TEMPLATES: list[tuple[str, str]] = [
     ("code_repo", "https://github.com/artifact-rot-absent-{t}/repo-{t}"),
     ("code_repo", "https://gitlab.com/artifact-rot-absent-{t}/repo-{t}"),
@@ -97,16 +96,16 @@ DEAD_TEMPLATES: list[tuple[str, str]] = [
     ("generic_url", "https://www.gnu.org/artifact-rot-absent-{t}/"),
 ]
 
-# --- Cas `malformed` : casses des l'origine, evalues hors ligne --------------------
+# --- `malformed` cases: broken from the start, evaluated offline ---------------------
 MALFORMED_CASES: list[str] = [
     "https://github.com/",
     "https://github.com",
     "http://doi.org/notadoi",
-    # NB : `https://doi. org/10.7939/…` a ete retire de cette liste apres le premier run
-    # reel. Ce n'est PAS un lien malforme : c'est un lien valide casse par l'extraction
-    # PDF, que `repair_spaced_hosts` recolle — et doit recoller. Le compter `malformed`
-    # aurait fait passer une reparation reussie pour un echec. Le cas reste teste, a sa
-    # vraie place, dans `tests/test_normalize.py::TestMetacheckBug2GrobidWhitespace`.
+    # NB: `https://doi. org/10.7939/…` was removed from this list after the first real
+    # run. It is NOT a malformed link: it is a valid link broken by PDF extraction, which
+    # `repair_spaced_hosts` rejoins — and must rejoin. Counting it `malformed` would have
+    # made a successful repair look like a failure. The case is still tested, in its
+    # proper place, in `tests/test_normalize.py::TestMetacheckBug2GrobidWhitespace`.
     "https://.com/owner/repo",
     "https://github..com/owner/repo",
     "https://-badhost.org/data",
@@ -121,20 +120,20 @@ class ControlCase(BaseModel):
     url: str
     kind: str
     expected: Status | None = None
-    """None pour la famille `malformed`, evaluee par `is_malformed` et non par une sonde."""
+    """None for the `malformed` family, evaluated by `is_malformed` and not by a probe."""
     family: str
     provenance: str
-    """Comment la verite est connue. Rend le jeu auditable sans faire confiance a l'auteur."""
+    """How the truth is known. Makes the set auditable without trusting its author."""
     circular: bool = False
-    """La verite vient-elle du **meme champ** que lit la sonde ?
+    """Does the truth come from the **same field** the probe reads?
 
-    Un enregistrement Zenodo declare `restricted` par l'API, verifie par une sonde qui
-    lit ce meme champ, ne teste pas le jugement : il teste que la chaine tient. C'est
-    utile, mais ce n'est pas la meme chose, et un score qui melange les deux surestime.
+    A Zenodo record declared `restricted` by the API, checked by a probe reading that
+    same field, does not test judgement: it tests that the pipeline holds. Useful, but
+    not the same thing, and a score that mixes the two overstates.
 
-    Le rapport separe donc les cas circulaires des autres. Un depot GitHub retire pour
-    raisons legales, lui, est non circulaire : la verite vient du registre public
-    `github/dmca`, un document juridique, pas d'un code HTTP."""
+    The report therefore separates circular cases from the others. A GitHub repository
+    taken down for legal reasons, by contrast, is non-circular: the truth comes from the
+    public `github/dmca` register, a legal document, not from an HTTP code."""
 
 
 def build_cases(n_dead: int = 90) -> list[ControlCase]:
@@ -149,7 +148,7 @@ def build_cases(n_dead: int = 90) -> list[ControlCase]:
                 kind=kind,
                 expected=Status.ALIVE,
                 family="alive",
-                provenance="ressource publique stable, adossee a une organisation perenne",
+                provenance="stable public resource, backed by a durable organisation",
             )
         )
 
@@ -164,7 +163,7 @@ def build_cases(n_dead: int = 90) -> list[ControlCase]:
                 kind=kind,
                 expected=Status.DEAD,
                 family="dead",
-                provenance="espace de noms aleatoire de 128 bits sur un hebergeur reel",
+                provenance="128-bit random namespace on a real host",
             )
         )
 
@@ -176,7 +175,7 @@ def build_cases(n_dead: int = 90) -> list[ControlCase]:
                 kind="generic_url",
                 expected=None,
                 family="malformed",
-                provenance="invalidite syntaxique, verifiee hors ligne",
+                provenance="syntactic invalidity, checked offline",
             )
         )
 
@@ -188,7 +187,7 @@ def build_cases(n_dead: int = 90) -> list[ControlCase]:
                 kind=kind,
                 expected=Status.UNKNOWN,
                 family="waf",
-                provenance="hote derriere un pare-feu applicatif : la bonne reponse est unknown",
+                provenance="host behind a web application firewall: the correct answer is unknown",
             )
         )
 
@@ -284,8 +283,8 @@ def _score(results: list[dict]) -> dict:
                 {"case_id": r["case_id"], "url": r["url"], "observed": r["observed"], "reason": r["reason"]}
             )
 
-    # Un cas dont la verite vient du meme champ que lit la sonde ne teste pas le
-    # jugement : il teste que la chaine tient. Les melanger surestime le score.
+    # A case whose truth comes from the same field the probe reads does not test
+    # judgement: it tests that the pipeline holds. Mixing the two overstates the score.
     for family, f in families.items():
         rows = [r for r in results if r["family"] == family]
         circ = [r for r in rows if r.get("circular")]
@@ -296,8 +295,8 @@ def _score(results: list[dict]) -> dict:
             sum(r["correct"] for r in noncirc) / len(noncirc) if noncirc else None
         )
 
-    # `waf` n'est pas dans les familles requises : c'est un garde-fou ajoute, pas une
-    # categorie du §4. Son absence n'invalide pas le verdict ; son echec, si.
+    # `waf` is not a required family: it is an added safeguard, not a §4 category. Its
+    # absence does not invalidate the verdict; its failure does.
     missing = {"alive", "dead", "malformed", "restricted"} - set(families)
     n = sum(f["n"] for f in families.values())
     correct = sum(f["correct"] for f in families.values())
@@ -310,12 +309,12 @@ def _score(results: list[dict]) -> dict:
         "target_accuracy": TARGET_ACCURACY,
         "families": families,
         "missing_families": sorted(missing),
-        # Le verdict n'est emis que si les quatre familles sont presentes. Un score
-        # calcule sur un jeu ampute n'est pas un score, c'est une mise en scene.
+        # A verdict is issued only if all four families are present. A score computed on
+        # an amputated set is not a score, it is window dressing.
         "verdict": (
-            "incomplet"
+            "incomplete"
             if missing
-            else ("passe" if n and correct / n >= TARGET_ACCURACY else "echoue")
+            else ("pass" if n and correct / n >= TARGET_ACCURACY else "fail")
         ),
         "results": results,
     }
@@ -325,14 +324,14 @@ def main(argv: list[str] | None = None) -> int:
     try:
         settings = Settings.from_env()
     except ConfigError as exc:
-        print(f"erreur de configuration : {exc}", file=sys.stderr)
+        print(f"configuration error: {exc}", file=sys.stderr)
         return 2
 
     if not settings.github_token:
         print(
-            "avertissement : GITHUB_TOKEN absent. Le quota anonyme (60 req/h) ne suffit "
-            "pas a rejouer le jeu de controle plusieurs fois dans l'heure ; les cas "
-            "GitHub reviendront `unknown` sans que cela dise rien de leur etat.",
+            "warning: GITHUB_TOKEN not set. The anonymous quota (60 req/h) is not enough "
+            "to replay the control set several times within an hour; GitHub cases will "
+            "come back `unknown` without saying anything about their state.",
             file=sys.stderr,
         )
 
@@ -344,26 +343,26 @@ def main(argv: list[str] | None = None) -> int:
         json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8"
     )
 
-    print(f"jeu de controle E2 — {report['n_cases']} cas — verdict : {report['verdict']}")
+    print(f"E2 control set — {report['n_cases']} cases — verdict: {report['verdict']}")
     for family, f in sorted(report["families"].items()):
         acc = f["accuracy"]
-        line = f"  {family:<11} n={f['n']:<4} exactitude={acc:.3f}  unknown={f['unknown']}"
+        line = f"  {family:<11} n={f['n']:<4} accuracy={acc:.3f}  unknown={f['unknown']}"
         if f.get("n_circular"):
             nc = f["accuracy_non_circular"]
             nc_txt = f"{nc:.3f}" if nc is not None else "n/a"
-            line += f"  [dont {f['n_circular']} circulaires ; hors circulaires : {nc_txt}]"
+            line += f"  [{f['n_circular']} circular; excluding circular: {nc_txt}]"
         print(line)
         for err in f["errors"][:5]:
             print(f"      X {err['case_id']} {err['observed']:<10} {err['reason']}  {err['url']}")
     if report["missing_families"]:
         print(
-            "  familles absentes : "
+            "  missing families: "
             + ", ".join(report["missing_families"])
-            + " — verdict non emis (voir docs/jeu-de-controle.md)"
+            + " — no verdict issued (see docs/control-set.md)"
         )
-    print(f"  rapport : {out_dir / 'control.json'}")
+    print(f"  report: {out_dir / 'control.json'}")
 
-    return 0 if report["verdict"] == "passe" else 1
+    return 0 if report["verdict"] == "pass" else 1
 
 
 if __name__ == "__main__":

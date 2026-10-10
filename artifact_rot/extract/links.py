@@ -1,12 +1,11 @@
-"""Extraction des liens d'artefacts depuis le texte integral.
+"""Extracting artifact links from full text.
 
-L'extraction se fait sur le **texte reparé** (§ `normalize.repair_spaced_hosts`), jamais
-sur le texte brut : 85 % des articles du corpus de validation de metacheck contiennent
-des URL coupees par l'extraction PDF, et une regex appliquee avant reparation les perd
-silencieusement.
+Extraction runs on the **repaired text** (see `normalize.repair_spaced_hosts`), never on
+the raw text: 85% of the papers in metacheck's validation corpus contain URLs split by PDF
+extraction, and a regex applied before repair silently loses them.
 
-Ce module ne juge pas si un lien est vivant. Il produit des `Link`, avec leur provenance
-et leur forme canonique. La classification, c'est `probe/`.
+This module does not judge whether a link is alive. It produces `Link` objects, with their
+provenance and canonical form. Classification is `probe/`'s job.
 """
 
 from __future__ import annotations
@@ -50,9 +49,9 @@ ARTIFACT_HOSTS = {
     "pangaea.de",
     "zenodo.figshare.com",
 }
-"""Hebergeurs d'artefacts reconnus. Un lien hors de cette liste n'est pas ecarte : il
-devient `generic_url` et reste sonde. La liste sert a mesurer le rappel (E3) sur la
-population qui compte, pas a filtrer."""
+"""Recognised artifact hosts. A link outside this list is not discarded: it becomes
+`generic_url` and is still probed. The list is used to measure recall (E3) on the
+population that matters, not to filter."""
 
 BOILERPLATE = re.compile(
     r"""(?ix)
@@ -69,9 +68,9 @@ BOILERPLATE = re.compile(
   | lattes\.cnpq\.br
     """
 )
-"""Liens de fabrication editoriale, presents dans presque tout PDF : licence, marque de
-controle, profils d'auteurs, feuilles de style. Les compter comme artefacts gonflerait
-le denominateur avec des liens dont la survie n'interesse personne."""
+"""Editorial production links, present in almost every PDF: licence, Crossmark, author
+profiles, stylesheets. Counting them as artifacts would inflate the denominator with
+links whose survival interests nobody."""
 
 
 def is_boilerplate(url: str) -> bool:
@@ -79,11 +78,11 @@ def is_boilerplate(url: str) -> bool:
 
 
 def is_artifact_link(url: str) -> bool:
-    """Le lien designe-t-il un artefact de recherche ?
+    """Does the link designate a research artifact?
 
-    Sert au calcul du rappel d'E3 : mesurer le rappel sur *toutes* les URL d'un article
-    melangerait les liens qui nous interessent avec les centaines de DOI de sa
-    bibliographie, et produirait un chiffre flatteur et vide de sens.
+    Used for E3 recall: measuring recall on *all* of a paper's URLs would mix the links we
+    care about with the hundreds of DOIs in its bibliography, and produce a flattering,
+    meaningless figure.
     """
     if is_boilerplate(url):
         return False
@@ -97,12 +96,12 @@ TRAILING_PUNCT = ".,;:!?”»'\"" + ")]}"
 
 
 def iter_raw_links(text: str):
-    """Chaque URL ou DOI du texte, avec sa position — la position donne la provenance.
+    """Each URL or DOI in the text, with its position — the position gives provenance.
 
-    La ponctuation de fin de phrase est retiree ici et pas plus loin : `Link.raw` doit
-    porter l'URL telle que l'auteur l'a ecrite, et le point qui termine la phrase ne
-    fait pas partie de l'URL. Le laisser obligerait chaque consommateur a s'en occuper,
-    et un seul oubli produirait un lien mort qui n'a jamais existe.
+    End-of-sentence punctuation is stripped here and nowhere else: `Link.raw` must carry
+    the URL as the author wrote it, and the full stop ending the sentence is not part of
+    the URL. Leaving it would force every consumer to deal with it, and a single omission
+    would produce a dead link that never existed.
     """
     repaired = repair_spaced_hosts(text)
     for m in URL_IN_TEXT.finditer(repaired):
@@ -124,16 +123,15 @@ def extract_links(
     structured_urls: list[str] | None = None,
     chrome_host: str | None = None,
 ) -> list[Link]:
-    """Produit les `Link` d'un article, dedupliques et attribues a leur provenance.
+    """Produce a paper's `Link` objects, deduplicated and attributed to their provenance.
 
-    `structured_urls` (annotations PDF, `<a href>`, `<ext-link>`) est **fusionne** avec
-    l'extraction textuelle, pas oppose a elle : la mesure du 2026-09-20 montre que les
-    annotations contiennent des URL que le texte perd par cesure, et le texte contient
-    des URL que l'editeur n'a pas balisees. Prendre l'union est la seule option qui ne
-    jette rien.
+    `structured_urls` (PDF annotations, `<a href>`, `<ext-link>`) is **merged** with text
+    extraction, not opposed to it: the 2026-09-20 measurement shows that annotations
+    contain URLs the text loses to hyphenation, and the text contains URLs the publisher
+    did not tag. Taking the union is the only option that throws nothing away.
 
-    La provenance d'un lien venu des seules annotations est `body` : une annotation ne
-    dit pas dans quelle section elle se trouve.
+    The provenance of a link found only in annotations is `body`: an annotation does not
+    say which section it is in.
     """
     repaired = repair_spaced_hosts(text)
     availability = find_availability_spans(repaired)
@@ -146,13 +144,13 @@ def extract_links(
         normalized = canonicalize(raw)
         if normalized in seen or is_boilerplate(normalized):
             return
-        # Habillage du site hote. Une page HTML melange l'article et le menu du site qui
-        # l'heberge : une notice Zenodo renvoie vers `about.zenodo.org`, un portail de
-        # revue vers ses propres rubriques. 216 liens `about.zenodo.org` dans un seul
-        # lot le 2026-09-21. Ce sont les liens du site, pas ceux de l'article.
+        # Host-site chrome. An HTML page mixes the paper with the menu of the site hosting
+        # it: a Zenodo record links to `about.zenodo.org`, a journal portal to its own
+        # sections. 216 `about.zenodo.org` links in a single batch on 2026-09-21. These
+        # are the site's links, not the paper's.
         #
-        # Ne s'applique qu'aux documents HTML : les annotations d'un PDF appartiennent
-        # au document, et un PDF depose sur Zenodo peut legitimement citer Zenodo.
+        # Only applies to HTML documents: a PDF's annotations belong to the document, and
+        # a PDF deposited on Zenodo may legitimately cite Zenodo.
         if chrome_host and _same_site(host_of(normalized), chrome_host):
             return
         seen.add(normalized)
@@ -176,9 +174,9 @@ def extract_links(
         add(raw, classify_position(pos, availability, references))
 
     for raw in structured_urls or []:
-        # Les annotations d'un PDF contiennent aussi `mailto:`, `tel:` et `file:///` —
-        # les adresses des auteurs et des chemins locaux restes dans le document. Ce ne
-        # sont pas des liens d'artefacts, et il n'est pas question de les toucher.
+        # A PDF's annotations also contain `mailto:`, `tel:` and `file:///` — the
+        # authors' addresses and local paths left in the document. They are not artifact
+        # links, and touching them is out of the question.
         if raw.lower().startswith(("http://", "https://")):
             add(raw, "body")
 
@@ -190,11 +188,11 @@ def _kind(url: str) -> LinkKind:
 
 
 def count_on_request(text: str) -> int:
-    """Piege 4 : « disponible sur demande » n'est pas un lien.
+    """Pitfall 4: "available on request" is not a link.
 
-    Compte a part, jamais sonde, et le rapport dit qu'on n'a pas teste — on n'ecrit pas
-    a des milliers d'auteurs. Le compte porte sur les declarations de disponibilite
-    seules : la formule apparait aussi dans des contextes sans rapport.
+    Counted separately, never probed, and the report says it was not tested — we do not
+    write to thousands of authors. The count covers availability statements only: the
+    phrase also appears in unrelated contexts.
     """
     repaired = repair_spaced_hosts(text)
     return sum(
@@ -203,12 +201,12 @@ def count_on_request(text: str) -> int:
 
 
 def _same_site(host: str, other: str) -> bool:
-    """Deux hotes appartiennent-ils au meme site ? Compare les deux derniers labels.
+    """Do two hosts belong to the same site? Compares the last two labels.
 
-    `about.zenodo.org` et `zenodo.org` : oui. `github.com` et `zenodo.org` : non.
-    Volontairement grossier — un suffixe public complet (`co.uk`, `jst.go.jp`) exigerait
-    une liste externe, et le cas d'usage ne le demande pas : on ecarte du bruit, on ne
-    decide pas d'un statut.
+    `about.zenodo.org` and `zenodo.org`: yes. `github.com` and `zenodo.org`: no.
+    Deliberately coarse — a full public suffix list (`co.uk`, `jst.go.jp`) would require
+    an external list, and the use case does not call for it: we discard noise, we do not
+    decide a status.
     """
     a, b = host.lower().split("."), other.lower().split(".")
     return len(a) >= 2 and len(b) >= 2 and a[-2:] == b[-2:]

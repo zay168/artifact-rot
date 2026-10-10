@@ -1,9 +1,8 @@
-"""E4 — ordonnanceur : selection, espacement, budgets, reprise.
+"""E4 — scheduler: selection, spacing, budgets, resumption.
 
-La reprise est testee parce que c'est la promesse centrale de l'etape : deux semaines
-separent la premiere sonde de la derniere, et rien ne garantit que la machine reste
-allumee. Un ordonnanceur qui perd son etat oblige a tout recommencer, ce qui coute
-deux semaines de plus.
+Resumption is tested because it is the stage's central promise: two weeks separate the
+first probe from the last, and nothing guarantees the machine stays on. A scheduler that
+loses its state forces starting over, which costs two more weeks.
 """
 
 from __future__ import annotations
@@ -69,22 +68,22 @@ def probe_row(conn, link_id: str, attempt: int, status: str, at: datetime) -> No
         )
 
 
-class TestCeQuOnSonde:
-    def test_un_lien_d_artefact_est_sonde(self) -> None:
+class TestWhatGetsProbed:
+    def test_an_artifact_link_is_probed(self) -> None:
         assert should_probe(link_row("a"))[0]
 
-    def test_sur_demande_jamais_sonde(self) -> None:
-        """Piege 4 : ce n'est pas un lien."""
+    def test_on_request_never_probed(self) -> None:
+        """Pitfall 4: it is not a link."""
         keep, why = should_probe(link_row("a", kind="on_request"))
         assert not keep and why == "on_request"
 
-    def test_doi_d_article_cite_exclu(self) -> None:
-        """Mesurer la survie de la litterature n'est pas le sujet, et un DOI d'article
-        ne meurt pas : le chiffre serait excellent et hors sujet."""
+    def test_cited_paper_doi_excluded(self) -> None:
+        """Measuring the survival of the literature is not the subject, and a paper DOI
+        does not die: the figure would be excellent and off-topic."""
         keep, why = should_probe(link_row("a", kind="citation_doi", host="doi.org"))
         assert not keep and why == "citation_doi"
 
-    def test_hote_bibliographique_exclu(self) -> None:
+    def test_citation_host_excluded(self) -> None:
         keep, why = should_probe(
             link_row(
                 "a",
@@ -93,10 +92,10 @@ class TestCeQuOnSonde:
                 kind="generic_url",
             )
         )
-        assert not keep and why == "hote_bibliographique"
+        assert not keep and why == "citation_host"
 
-    def test_mais_les_donnees_du_ncbi_restent(self) -> None:
-        """Le NCBI heberge aussi de vraies donnees : un lien nuccore est un artefact."""
+    def test_but_ncbi_data_is_kept(self) -> None:
+        """NCBI also hosts real data: a nuccore link is an artifact."""
         keep, _ = should_probe(
             link_row(
                 "a",
@@ -107,75 +106,74 @@ class TestCeQuOnSonde:
         )
         assert keep
 
-    def test_lien_casse_a_la_source_jamais_sonde(self) -> None:
-        """Piege 3 : il n'a jamais fonctionne, il n'y a rien a sonder, et le resultat
-        serait indiscernable d'un lien mort."""
+    def test_link_broken_at_source_never_probed(self) -> None:
+        """Pitfall 3: it never worked, there is nothing to probe, and the result would be
+        indistinguishable from a dead link."""
         keep, why = should_probe(link_row("a", malformed_at_source=True))
         assert not keep and why == "malformed_at_source"
 
-    def test_schema_non_http_exclu(self) -> None:
+    def test_non_http_scheme_excluded(self) -> None:
         keep, why = should_probe(link_row("a", normalized="mailto:auteur@labo.fr"))
-        assert not keep and why == "schema_non_http"
+        assert not keep and why == "non_http_scheme"
 
-    def test_depot_cite_en_bibliographie_conserve(self) -> None:
-        """Le cas mesure par metacheck : 3 % des articles ne citent leur depot que la."""
+    def test_repository_cited_in_bibliography_kept(self) -> None:
+        """The case measured by metacheck: 3% of papers cite their repository only there."""
         assert should_probe(link_row("a", source="references", host="zenodo.org"))[0]
 
-    def test_article_cite_en_bibliographie_exclu(self) -> None:
+    def test_paper_cited_in_bibliography_excluded(self) -> None:
         keep, why = should_probe(
             link_row("a", source="references", host="journals.plos.org", kind="generic_url")
         )
-        assert not keep and why == "reference_non_artefact"
+        assert not keep and why == "non_artifact_reference"
 
 
 class TestSelection:
-    def test_un_lien_neuf_est_du(self, conn, tmp_path: Path) -> None:
+    def test_a_new_link_is_due(self, conn, tmp_path: Path) -> None:
         load_links(conn, write(tmp_path, [link_row("a")]))
         assert len(due(conn, SETTINGS, NOW)) == 1
 
-    def test_un_lien_vivant_n_est_plus_sonde(self, conn, tmp_path: Path) -> None:
-        """Economie assumee : une observation vivante l'emporte deja (§5). Deux sondes
-        de plus n'ajoutent rien et representent l'essentiel du trafic."""
+    def test_a_live_link_is_no_longer_probed(self, conn, tmp_path: Path) -> None:
+        """Deliberate saving: one live observation already wins (§5). Two more probes add
+        nothing and account for most of the traffic."""
         load_links(conn, write(tmp_path, [link_row("a")]))
         probe_row(conn, "a", 1, "alive", NOW - timedelta(days=30))
         assert due(conn, SETTINGS, NOW) == []
 
-    def test_un_lien_restreint_n_est_plus_sonde(self, conn, tmp_path: Path) -> None:
+    def test_a_restricted_link_is_no_longer_probed(self, conn, tmp_path: Path) -> None:
         load_links(conn, write(tmp_path, [link_row("a")]))
         probe_row(conn, "a", 1, "restricted", NOW - timedelta(days=30))
         assert due(conn, SETTINGS, NOW) == []
 
-    def test_espacement_respecte(self, conn, tmp_path: Path) -> None:
-        """« Trois tentatives espacees de plusieurs jours, jamais dans la meme
-        minute » (§4, piege 1)."""
+    def test_spacing_respected(self, conn, tmp_path: Path) -> None:
+        """"Three attempts several days apart, never in the same minute" (§4, pitfall 1)."""
         load_links(conn, write(tmp_path, [link_row("a")]))
         probe_row(conn, "a", 1, "dead", NOW - timedelta(hours=1))
         assert due(conn, SETTINGS, NOW) == []
         assert len(due(conn, SETTINGS, NOW + timedelta(days=6))) == 1
 
-    def test_trois_sondes_suffisent(self, conn, tmp_path: Path) -> None:
+    def test_three_probes_are_enough(self, conn, tmp_path: Path) -> None:
         load_links(conn, write(tmp_path, [link_row("a")]))
         for i in range(1, MAX_ATTEMPTS + 1):
             probe_row(conn, "a", i, "dead", NOW - timedelta(days=30 - i * 6))
         assert due(conn, SETTINGS, NOW) == []
 
-    def test_l_attempt_suivant_est_calcule(self, conn, tmp_path: Path) -> None:
+    def test_next_attempt_is_computed(self, conn, tmp_path: Path) -> None:
         load_links(conn, write(tmp_path, [link_row("a")]))
         probe_row(conn, "a", 1, "dead", NOW - timedelta(days=30))
         assert due(conn, SETTINGS, NOW)[0].next_attempt == 2
 
 
-class TestReprise:
-    def test_recharger_n_efface_aucune_sonde(self, conn, tmp_path: Path) -> None:
+class TestResumption:
+    def test_reloading_erases_no_probe(self, conn, tmp_path: Path) -> None:
         path = write(tmp_path, [link_row("a")])
         load_links(conn, path)
         probe_row(conn, "a", 1, "dead", NOW - timedelta(days=30))
-        load_links(conn, path)  # rechargement, comme apres un redemarrage
+        load_links(conn, path)  # reload, as after a restart
         assert conn.execute("SELECT COUNT(*) AS n FROM probes").fetchone()["n"] == 1
         assert due(conn, SETTINGS, NOW)[0].next_attempt == 2
 
-    def test_l_etat_survit_a_la_fermeture(self, tmp_path: Path) -> None:
-        """La file est sur disque : fermer et rouvrir ne perd rien."""
+    def test_state_survives_closing(self, tmp_path: Path) -> None:
+        """The queue is on disk: closing and reopening loses nothing."""
         path = tmp_path / "queue.sqlite3"
         c1 = connect(path)
         load_links(c1, write(tmp_path, [link_row("a"), link_row("b")]))
@@ -192,28 +190,28 @@ class TestReprise:
 
 
 class TestBudgets:
-    def test_un_lien_github_coute_trois_requetes_au_pire(self, conn, tmp_path: Path) -> None:
-        """Depot, proprietaire, Software Heritage. Un budget calcule sur la moyenne est
-        un budget depasse un jour sur deux."""
+    def test_a_github_link_costs_three_requests_at_worst(self, conn, tmp_path: Path) -> None:
+        """Repository, owner, Software Heritage. A budget computed on the average is a
+        budget exceeded one day out of two."""
         load_links(conn, write(tmp_path, [link_row("a")]))
         estimate = plan(due(conn, SETTINGS, NOW))
         per_host = {h["host"]: h["requests"] for h in estimate["hosts"]}
         assert per_host["api.github.com"] == 2
         assert per_host["archive.softwareheritage.org"] == 1
 
-    def test_le_budget_porte_sur_l_hote_qui_recoit(self, conn, tmp_path: Path) -> None:
-        """Un lien github.com frappe api.github.com."""
+    def test_budget_applies_to_the_receiving_host(self, conn, tmp_path: Path) -> None:
+        """A github.com link hits api.github.com."""
         load_links(conn, write(tmp_path, [link_row("a")]))
         hosts = {h["host"] for h in plan(due(conn, SETTINGS, NOW))["hosts"]}
         assert "api.github.com" in hosts
         assert "github.com" not in hosts
 
-    def test_hote_inconnu_recoit_le_budget_par_defaut(self) -> None:
+    def test_unknown_host_gets_default_budget(self) -> None:
         assert budget_of("labo.univ-exemple.fr") == budget_of("_default")
 
-    def test_la_duree_est_une_duree_pas_une_erreur(self, conn, tmp_path: Path) -> None:
-        """Un budget est un debit horaire. 500 requetes a 200/h, c'est 2,5 heures, pas
-        une passe interdite."""
+    def test_duration_is_a_duration_not_an_error(self, conn, tmp_path: Path) -> None:
+        """A budget is an hourly rate. 500 requests at 200/h is 2.5 hours, not a
+        forbidden pass."""
         rows = [
             link_row(
                 f"l{i}",
@@ -231,15 +229,16 @@ class TestBudgets:
         assert estimate["hosts_over_hourly_budget"] or expected <= 1
 
 
-class TestAlternanceDesHotes:
-    """Sans alternance, la passe dure la somme des temps par hote au lieu du maximum.
+class TestHostInterleaving:
+    """Without interleaving, the pass lasts the sum of per-host times instead of the
+    maximum.
 
-    875 liens NCBI a 200 requetes/heure font 4,4 heures. S'ils se suivent, on attend
-    4,4 heures avant de toucher le premier lien du deuxieme hote. En alternant, on
-    interroge les autres hotes pendant qu'on attend le NCBI.
+    875 NCBI links at 200 requests/hour take 4.4 hours. If they follow one another, we wait
+    4.4 hours before touching the first link of the second host. By interleaving, we query
+    the other hosts while waiting for NCBI.
     """
 
-    def test_les_hotes_alternent(self, conn, tmp_path: Path) -> None:
+    def test_hosts_alternate(self, conn, tmp_path: Path) -> None:
         rows = [
             link_row(f"a{i}", host="gros.fr", normalized=f"https://gros.fr/{i}")
             for i in range(10)
@@ -249,10 +248,10 @@ class TestAlternanceDesHotes:
         ]
         load_links(conn, write(tmp_path, rows))
         hosts = [item.host for item in due(conn, SETTINGS, NOW)]
-        # Le petit hote doit etre servi tot, pas apres les dix du gros.
+        # The small host must be served early, not after the big one's ten.
         assert "petit.fr" in hosts[:6]
 
-    def test_rien_n_est_perdu(self, conn, tmp_path: Path) -> None:
+    def test_nothing_is_lost(self, conn, tmp_path: Path) -> None:
         rows = [
             link_row(f"a{i}", host=f"h{i % 4}.fr", normalized=f"https://h{i % 4}.fr/{i}")
             for i in range(20)
@@ -263,11 +262,11 @@ class TestAlternanceDesHotes:
         assert len({item.link_id for item in got}) == 20
 
 
-class TestMobilierDeSite:
-    """Une regle, pas une liste noire — elle doit continuer a fonctionner sur un autre
-    corpus, avec le mobilier d'autres sites que ceux deja rencontres."""
+class TestSiteFurniture:
+    """A rule, not a blocklist — it must keep working on another corpus, with the
+    furniture of sites other than those already encountered."""
 
-    def test_url_repetee_entre_disciplines_est_ecartee(self, conn, tmp_path: Path) -> None:
+    def test_url_repeated_across_disciplines_is_discarded(self, conn, tmp_path: Path) -> None:
         rows = [
             link_row(
                 f"c{i}",
@@ -280,12 +279,12 @@ class TestMobilierDeSite:
             for i in range(6)
         ]
         counts = load_links(conn, write(tmp_path, rows))
-        assert counts.get("mobilier_de_site") == 6
+        assert counts.get("site_furniture") == 6
         assert due(conn, SETTINGS, NOW) == []
 
-    def test_un_depot_repete_est_conserve(self, conn, tmp_path: Path) -> None:
-        """Un jeu de donnees peut etre reutilise par plusieurs equipes. La regle ne doit
-        pas le confondre avec du mobilier — d'ou l'exemption des hotes d'artefacts."""
+    def test_a_repeated_repository_is_kept(self, conn, tmp_path: Path) -> None:
+        """A dataset can be reused by several teams. The rule must not mistake it for
+        furniture — hence the exemption for artifact hosts."""
         rows = [
             link_row(
                 f"z{i}",
@@ -300,7 +299,7 @@ class TestMobilierDeSite:
         load_links(conn, write(tmp_path, rows))
         assert len(due(conn, SETTINGS, NOW)) == 6
 
-    def test_une_url_d_une_seule_discipline_est_conservee(self, conn, tmp_path: Path) -> None:
+    def test_a_single_discipline_url_is_kept(self, conn, tmp_path: Path) -> None:
         rows = [
             link_row(
                 f"d{i}",
@@ -316,15 +315,15 @@ class TestMobilierDeSite:
         assert len(due(conn, SETTINGS, NOW)) == 6
 
 
-class TestLimiteurDeDebit:
-    def test_un_hote_est_espace(self) -> None:
+class TestRateLimiter:
+    def test_a_host_is_spaced(self) -> None:
         import time
 
         from artifact_rot.limiter import HostRateLimiter
 
-        # Intervalle volontairement large : la granularite de `time.sleep` sous Windows
-        # est d'environ 15 ms, et un seuil serre rendrait le test instable pour une
-        # raison qui n'a rien a voir avec ce qu'il verifie.
+        # Deliberately wide interval: `time.sleep` granularity on Windows is about 15 ms,
+        # and a tight threshold would make the test flaky for a reason unrelated to what
+        # it checks.
         interval, n = 0.1, 4
         limiter = HostRateLimiter(lambda _host: interval)
         start = time.monotonic()
@@ -332,9 +331,9 @@ class TestLimiteurDeDebit:
             limiter.acquire("a.fr")
         assert time.monotonic() - start >= interval * (n - 1) * 0.8
 
-    def test_deux_hotes_ne_s_attendent_pas(self) -> None:
-        """Le point de toute l'optimisation : patienter pour l'hote A ne doit rien
-        couter a l'hote B."""
+    def test_two_hosts_do_not_wait_for_each_other(self) -> None:
+        """The point of the whole optimisation: waiting for host A must cost host B
+        nothing."""
         import time
 
         from artifact_rot.limiter import HostRateLimiter
@@ -346,11 +345,11 @@ class TestLimiteurDeDebit:
         assert time.monotonic() - start < 0.05
 
 
-class TestDepotCiteEnBibliographie:
-    """3 % des articles ne citent leur depot que dans leur bibliographie (metacheck
-    issue #411). Les perdre par un test sur le mauvais champ serait silencieux."""
+class TestRepositoryCitedInBibliography:
+    """3% of papers cite their repository only in their bibliography (metacheck issue
+    #411). Losing them through a test on the wrong field would be silent."""
 
-    def test_doi_zenodo_en_bibliographie_conserve(self) -> None:
+    def test_zenodo_doi_in_bibliography_kept(self) -> None:
         keep, _ = should_probe(
             link_row(
                 "a",
@@ -362,7 +361,7 @@ class TestDepotCiteEnBibliographie:
         )
         assert keep
 
-    def test_doi_de_jeu_de_donnees_en_bibliographie_conserve(self) -> None:
+    def test_dataset_doi_in_bibliography_kept(self) -> None:
         keep, _ = should_probe(
             link_row(
                 "a",
@@ -374,7 +373,7 @@ class TestDepotCiteEnBibliographie:
         )
         assert keep
 
-    def test_doi_d_article_en_bibliographie_ecarte(self) -> None:
+    def test_paper_doi_in_bibliography_discarded(self) -> None:
         keep, why = should_probe(
             link_row(
                 "a",

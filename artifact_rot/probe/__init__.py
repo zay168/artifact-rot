@@ -1,8 +1,8 @@
-"""Registre des sondes.
+"""Prober registry.
 
-L'ordre est significatif : toute sonde d'API passe avant la sonde HTTP generique
-(§4, piege 1 — « interroger l'API, jamais le HTML »). La sonde generique ferme la
-liste parce qu'elle accepte tout ce qui commence par `http`.
+Order matters: every API prober comes before the generic HTTP prober (§4, pitfall 1 —
+"query the API, never the HTML"). The generic prober closes the list because it accepts
+anything starting with `http`.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ def default_registry() -> ProberRegistry:
             OSFProber(),
             FigshareProber(),
             DOIProber(),
-            GenericHTTPProber(),  # toujours en dernier
+            GenericHTTPProber(),  # always last
         ]
     )
 

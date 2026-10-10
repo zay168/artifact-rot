@@ -1,7 +1,7 @@
 [project]
 name = "artifact-rot"
 version = "0.1.0"
-description = "Observatoire de la survie des artefacts de recherche : mesure si les liens de code et de données annoncés dans les articles resolvent encore."
+description = "Observatory of research artifact survival: measures whether code and data links announced in scientific papers still resolve."
 requires-python = ">=3.12"
 dependencies = [
     "httpx>=0.27",
@@ -34,6 +34,6 @@ target-version = "py312"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
-    "network: touche le reseau reel (jeu de controle E2) ; desactive par defaut",
+    "network: touches the real network (E2 control set); disabled by default",
 ]
 addopts = "-m 'not network'"

@@ -1,8 +1,8 @@
-"""Garde de quota GitHub, ajoutee apres le run du 2026-09-20.
+"""GitHub quota guard, added after the 2026-09-20 run.
 
-Trois passages du jeu de controle ont epuise les 60 requetes/heure du mode anonyme.
-Les sondes ont bien renvoye `unknown` — un echec de crawler n'est pas un lien mort —
-mais la mesure devenait impossible et l'on continuait a frapper une API qui refusait.
+Three runs of the control set exhausted the 60 requests/hour of anonymous mode. The
+probers did return `unknown` — a crawler failure is not a dead link — but measurement
+became impossible and we kept hitting an API that was refusing.
 """
 
 from __future__ import annotations
@@ -24,44 +24,44 @@ def response(remaining: str | None, reset: str | None = None) -> httpx.Response:
 
 
 class TestQuotaTracker:
-    def test_lit_les_en_tetes(self) -> None:
+    def test_reads_headers(self) -> None:
         t = _RateLimitTracker()
         t.observe(response("57", "1790000000"))
         assert t.snapshot() == {"x_ratelimit_remaining": 57, "x_ratelimit_reset": 1790000000}
 
-    def test_quota_epuise(self) -> None:
+    def test_quota_exhausted(self) -> None:
         t = _RateLimitTracker()
         t.observe(response("0"))
         assert t.exhausted()
 
-    def test_quota_serre_coupe_l_enrichissement_avant_la_mesure(self) -> None:
-        """Le controle de proprietaire ne doit jamais etre ce qui epuise le quota."""
+    def test_tight_quota_cuts_enrichment_before_measurement(self) -> None:
+        """The owner check must never be what exhausts the quota."""
         t = _RateLimitTracker()
         t.observe(response("2"))
         assert t.low()
         assert not t.exhausted()
 
-    def test_sans_en_tete_on_ne_suppose_rien(self) -> None:
-        """Pas d'en-tete = pas d'information. On ne bloque pas sur une supposition."""
+    def test_no_header_means_no_assumption(self) -> None:
+        """No header = no information. We do not block on an assumption."""
         t = _RateLimitTracker()
         t.observe(response(None))
         assert not t.exhausted()
         assert not t.low()
 
-    def test_en_tete_non_numerique_ignore(self) -> None:
+    def test_non_numeric_header_ignored(self) -> None:
         t = _RateLimitTracker()
         t.observe(response("unknown"))
         assert not t.exhausted()
 
 
-class TestConfigSansJeton:
-    def test_l_enrichissement_est_coupe_sans_jeton(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """60 req/h : doubler le cout de chaque 404 rend le jeu de controle immesurable."""
+class TestConfigWithoutToken:
+    def test_enrichment_off_without_token(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """60 req/h: doubling the cost of each 404 makes the control set unmeasurable."""
         monkeypatch.setenv("ARTIFACT_ROT_CONTACT", "test@exemple.org")
         monkeypatch.delenv("GITHUB_TOKEN", raising=False)
         assert Settings.from_env().github_owner_check is False
 
-    def test_l_enrichissement_est_actif_avec_jeton(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_enrichment_on_with_token(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("ARTIFACT_ROT_CONTACT", "test@exemple.org")
-        monkeypatch.setenv("GITHUB_TOKEN", "ghp_factice")
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_dummy")
         assert Settings.from_env().github_owner_check is True

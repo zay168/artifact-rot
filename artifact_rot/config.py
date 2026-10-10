@@ -1,8 +1,8 @@
-"""Configuration d'execution. Piege 5 (§4) : etre un citoyen correct du reseau.
+"""Run configuration. Pitfall 5 (§4): be a good network citizen.
 
-Le contact du `User-Agent` n'est pas code en dur : il est lu dans l'environnement et
-son absence est une erreur bloquante. Sonder des milliers de depots scientifiques sans
-laisser de moyen de nous joindre est exactement ce que le §4 interdit.
+The `User-Agent` contact is not hard-coded: it is read from the environment and its
+absence is a blocking error. Probing thousands of scientific repositories without
+leaving a way to reach us is exactly what §4 forbids.
 """
 
 from __future__ import annotations
@@ -20,53 +20,53 @@ class ConfigError(RuntimeError):
 @dataclass(frozen=True)
 class Settings:
     contact: str
-    """Adresse de contact publique, exposee dans le User-Agent. Via ARTIFACT_ROT_CONTACT."""
+    """Public contact address, exposed in the User-Agent. Via ARTIFACT_ROT_CONTACT."""
 
     github_token: str | None = None
-    """60 req/h sans jeton, 5000 avec. Via GITHUB_TOKEN. Un jeton sans aucun scope
-    suffit : on ne lit que du public.
+    """60 req/h without a token, 5,000 with one. Via GITHUB_TOKEN. A token with no scope
+    at all is enough: we only read public data.
 
-    Sans jeton, le run S1 (§3, >= 2000 articles par strate croisee) est impossible :
-    le quota anonyme est epuise par quelques centaines de liens. Ce n'est donc pas
-    une commodite, c'est une condition de faisabilite de E5."""
+    Without a token the S1 run (§3, >= 2,000 papers per crossed stratum) is impossible:
+    the anonymous quota is exhausted by a few hundred links. It is therefore not a
+    convenience but a feasibility condition for E5."""
 
     github_owner_check: bool = True
-    """Sur un 404 GitHub, verifier si le compte proprietaire existe encore. C'est un
-    enrichissement d'analyse qui **double le cout en quota de chaque 404** — et le 404
-    est le cas majoritaire dans un observatoire de liens morts. Desactive
-    automatiquement en l'absence de jeton (voir `from_env`)."""
+    """On a GitHub 404, check whether the owner account still exists. It is an analysis
+    enrichment that **doubles the quota cost of every 404** — and the 404 is the majority
+    case in a dead-link observatory. Disabled automatically without a token (see
+    `from_env`)."""
 
     swh_enrichment: bool = True
-    """Sur un 404 de forge, demander a Software Heritage si l'origine a ete archivee.
+    """On a forge 404, ask Software Heritage whether the origin was archived.
 
-    Ne leve pas l'ambiguite prive/supprime — rien de public ne le peut. Repond a l'autre
-    question, celle du piege 3 : le depot a-t-il existe publiquement ? Une archive prouve
-    qu'il a vecu, donc que son absence est du rot et non un lien qui n'a jamais marche.
+    It does not resolve the private/deleted ambiguity — nothing public can. It answers
+    the other question, pitfall 3: did the repository ever exist publicly? An archive
+    proves it lived, hence that its absence is rot and not a link that never worked.
 
-    Une requete supplementaire par 404, sur une API tierce a quota propre. A couper si
-    SWH limite le debit pendant un run.
+    One extra request per 404, on a third-party API with its own quota. To be switched
+    off if SWH throttles during a run.
     """
 
     timeout_s: float = 12.0
     max_concurrency: int = 64
-    """Connexions HTTP simultanees du client.
+    """Simultaneous HTTP connections of the client.
 
-    **Ne regle pas la politesse** — c'est le limiteur par hote (`limiter.py`) qui s'en
-    charge, et lui seul. Ce nombre ne fait que plafonner le pool de connexions.
+    **It sets no politeness** — the per-host limiter (`limiter.py`) does that, and only
+    it. This number merely caps the connection pool.
 
-    Il valait 4, herite d'une epoque ou le sondage etait sequentiel. Une fois le pool de
-    threads en place, ce 4 annulait tout le parallelisme en silence : quarante-huit
-    threads se partageaient quatre connexions, et le debit restait identique a celui de
-    seize threads. Un plafond cache est pire qu'un plafond assume."""
+    It used to be 4, inherited from the time when probing was sequential. Once the thread
+    pool was in place, that 4 silently cancelled all parallelism: forty-eight threads
+    shared four connections, and throughput stayed identical to sixteen threads. A hidden
+    cap is worse than a declared one."""
 
     per_host_delay_s: float = 1.0
     respect_robots: bool = True
     body_evidence_bytes: int = 2048
-    """Taille du corps conserve comme preuve. Tronque, mais conserve (§5)."""
+    """Size of the response body kept as evidence. Truncated, but kept (§5)."""
 
     min_probe_span_days: int = 10
-    """Ecart calendaire minimal entre la premiere et la troisieme sonde avant qu'un
-    lien puisse etre declare `dead`. §4 piege 1 : jamais dans la meme minute."""
+    """Minimum calendar gap between the first and the third probe before a link can be
+    declared `dead`. §4 pitfall 1: never within the same minute."""
 
     extra_headers: dict[str, str] = field(default_factory=dict)
 
@@ -79,14 +79,14 @@ class Settings:
         contact = os.environ.get("ARTIFACT_ROT_CONTACT", "").strip()
         if not contact:
             raise ConfigError(
-                "ARTIFACT_ROT_CONTACT est obligatoire : le User-Agent doit porter un "
-                "contact joignable (PLAN.md §4, piege 5). Exemple : "
-                'ARTIFACT_ROT_CONTACT="artifact-rot@exemple.org"'
+                "ARTIFACT_ROT_CONTACT is mandatory: the User-Agent must carry a reachable "
+                "contact (PLAN.md §4, pitfall 5). Example: "
+                'ARTIFACT_ROT_CONTACT="artifact-rot@example.org"'
             )
         token = os.environ.get("GITHUB_TOKEN") or None
         return cls(
             contact=contact,
             github_token=token,
-            # Sans jeton, 60 requetes/heure : l'enrichissement passe apres la mesure.
+            # Without a token, 60 requests/hour: enrichment comes after measurement.
             github_owner_check=token is not None,
         )

@@ -1,28 +1,27 @@
-"""E1 — echantillonnage stratifie depuis OpenAlex, fige et reproductible.
+"""E1 — stratified sampling from OpenAlex, frozen and reproducible.
 
-Critere de passage (PLAN.md §7) : **rejouer la graine redonne le meme echantillon**.
-Un echantillon non reproductible rend tout le reste invérifiable — ce n'est pas une
-commodite d'ingenierie, c'est la condition pour qu'un tiers puisse contester un chiffre
-autrement qu'en nous croyant sur parole.
+Pass criterion (PLAN.md §7): **replaying the seed gives back the same sample**.
+A non-reproducible sample makes everything else unverifiable — this is not an
+engineering convenience, it is the condition for a third party to challenge a figure
+other than by taking our word for it.
 
-Deux mecanismes distincts, a ne pas confondre :
+Two distinct mechanisms, not to be confused:
 
-1. **La graine OpenAlex.** `sample=N&seed=S` renvoie le meme tirage a requete identique.
-   Verifie sur l'API le 2026-09-20 : deux appels successifs, memes identifiants, meme
-   ordre.
-2. **Le gel sur disque.** La graine ne suffit pas, parce que la *population* interrogee
-   bouge : OpenAlex indexe de nouveaux articles, corrige des metadonnees, et son
-   indicateur `has_fulltext` evolue. Rejouer la meme requete dans six mois peut donc
-   donner un autre tirage sans qu'aucun bug ne soit en cause. L'echantillon officiel est
-   le **fichier**, accompagne d'un manifeste qui porte la requete exacte, la graine, la
-   date d'extraction et l'empreinte du fichier.
+1. **The OpenAlex seed.** `sample=N&seed=S` returns the same draw for an identical
+   request. Checked on the API on 2026-09-20: two successive calls, same identifiers,
+   same order.
+2. **Freezing on disk.** The seed is not enough, because the queried *population* moves:
+   OpenAlex indexes new papers, fixes metadata, and its `has_fulltext` flag changes.
+   Replaying the same request in six months can therefore give another draw without any
+   bug involved. The official sample is the **file**, together with a manifest carrying
+   the exact request, the seed, the extraction date and the file's hash.
 
-`verify` controle les deux separement : l'integrite du fichier (qui doit toujours
-passer) et la derive de la population (qui est une information, pas une erreur).
+`verify` checks the two separately: file integrity (which must always pass) and
+population drift (which is information, not an error).
 
-Usage :
-    ARTIFACT_ROT_CONTACT="vous@exemple.org" python -m artifact_rot.sample build
-    ARTIFACT_ROT_CONTACT="vous@exemple.org" python -m artifact_rot.sample verify
+Usage:
+    ARTIFACT_ROT_CONTACT="you@example.org" python -m artifact_rot.sample build
+    ARTIFACT_ROT_CONTACT="you@example.org" python -m artifact_rot.sample verify
 """
 
 from __future__ import annotations
@@ -42,35 +41,34 @@ from .config import ConfigError, Settings
 OPENALEX = "https://api.openalex.org"
 SAMPLE_DIR = Path("data/sample")
 SAMPLE_SEED = 20260920
-"""Graine figee. Elle est publiee avec le rapport : quiconque veut refaire le tirage
-doit pouvoir le faire sans nous demander quoi que ce soit."""
+"""Frozen seed. It is published with the report: anyone wanting to redo the draw must be
+able to do so without asking us anything."""
 
 N_PER_STRATUM = 2000
-"""§3 : >= 2 000 articles par strate croisee. 5 annees x 4 disciplines = 40 000 articles."""
+"""§3: >= 2,000 papers per crossed stratum. 5 years x 4 disciplines = 40,000 papers."""
 
 YEARS: tuple[int, ...] = (2010, 2014, 2018, 2022, 2025)
-"""L'annee est la variable explicative principale (§3). L'ecart 2010-2025 est ce qui
-fabrique la courbe de survie des le premier run, sans attendre."""
+"""Year is the main explanatory variable (§3). The 2010-2025 span is what builds the
+survival curve from the first run, without waiting."""
 
 DISCIPLINES: dict[str, str] = {
-    # Quatre cultures de partage tres differentes (§3). Identifiants de `fields`
-    # OpenAlex, verifies sur l'API le 2026-09-20.
+    # Four very different sharing cultures (§3). OpenAlex `fields` identifiers, checked
+    # on the API on 2026-09-20.
     "medicine": "27",
     "computer_science": "17",
     "social_sciences": "33",
     "physics_astronomy": "31",
 }
-"""Hypothese signalee : le plan dit « biologie/medecine » ; le champ OpenAlex le plus
-proche est `Medicine` (27). `Biochemistry, Genetics and Molecular Biology` (13) serait
-l'autre choix defendable et plus proche de « biologie ». Medicine est retenu parce que
-c'est la culture ou « disponible sur demande » domine — le cas que le piege 4 doit
-precisement savoir compter a part. Le choix est inscrit ici pour etre contestable, et
-il est ferme jusqu'a E7."""
+"""Flagged assumption: the plan says "biology/medicine"; the closest OpenAlex field is
+`Medicine` (27). `Biochemistry, Genetics and Molecular Biology` (13) would be the other
+defensible choice, closer to "biology". Medicine is kept because it is the culture where
+"available on request" dominates — precisely the case pitfall 4 must count separately.
+The choice is written here so it can be challenged, and it is closed until E7."""
 
 BASE_FILTERS = (
-    "open_access.is_oa:true",  # §3 : restreint a l'acces ouvert
-    "has_fulltext:true",  # §3 : texte integral accessible, sinon rien a extraire
-    "type:article",  # exclut jeux de donnees, chapitres, actes, errata
+    "open_access.is_oa:true",  # §3: restricted to open access
+    "has_fulltext:true",  # §3: accessible full text, otherwise nothing to extract
+    "type:article",  # excludes datasets, chapters, proceedings, errata
 )
 
 SELECT = (
@@ -110,8 +108,8 @@ def strata() -> list[Stratum]:
 
 
 def _client(settings: Settings) -> httpx.Client:
-    # `mailto` place la requete dans le « polite pool » d'OpenAlex : debit plus stable
-    # et identification de l'appelant. C'est le §4 piege 5 sous sa forme OpenAlex.
+    # `mailto` puts the request in OpenAlex's "polite pool": a steadier rate and
+    # identification of the caller. This is §4 pitfall 5 in its OpenAlex form.
     return httpx.Client(
         base_url=OPENALEX,
         headers={"User-Agent": settings.user_agent},
@@ -122,20 +120,20 @@ def _client(settings: Settings) -> httpx.Client:
 
 
 PER_PAGE = 200
-"""Maximum autorise par OpenAlex."""
+"""Maximum allowed by OpenAlex."""
 
 
 def fetch_stratum(client: httpx.Client, stratum: Stratum, n: int, seed: int) -> list[dict]:
-    """Tire `n` articles d'une strate.
+    """Draw `n` papers from a stratum.
 
-    **Pagination classique `page=`, pas par curseur.** Verifie sur l'API le 2026-09-20 :
-    sous `sample=`, OpenAlex renvoie `next_cursor: null` des la premiere page — le
-    curseur ne pagine pas un tirage. La pagination classique, elle, fonctionne : pages
-    disjointes, et le meme couple (graine, page) redonne exactement la meme page.
+    **Classic `page=` pagination, not cursor-based.** Checked on the API on 2026-09-20:
+    under `sample=`, OpenAlex returns `next_cursor: null` from the first page — the
+    cursor does not paginate a draw. Classic pagination does work: disjoint pages, and the
+    same (seed, page) pair gives back exactly the same page.
 
-    Le premier essai avait donc silencieusement ramene 200 articles par strate au lieu
-    de 2 000 sans lever d'erreur. C'est le genre de defaut qu'un critere de passage
-    formule en nombre attrape, et qu'un code qui « a l'air de marcher » laisse passer.
+    The first attempt had therefore silently brought back 200 papers per stratum instead
+    of 2,000 without raising an error. This is the kind of defect a pass criterion stated
+    as a number catches, and that code which "seems to work" lets through.
     """
     out: list[dict] = []
     for page in range(1, (n + PER_PAGE - 1) // PER_PAGE + 1):
@@ -171,7 +169,7 @@ def _journal_of(work: dict) -> str:
 
 
 def _fulltext_url(work: dict) -> str | None:
-    """Ou aller chercher le texte integral en E3. Sources ouvertes uniquement."""
+    """Where to fetch the full text in E3. Open sources only."""
     best = work.get("best_oa_location") or {}
     return best.get("pdf_url") or best.get("landing_page_url")
 
@@ -210,10 +208,10 @@ def build(settings: Settings, n: int = N_PER_STRATUM, seed: int = SAMPLE_SEED) -
                 "requested": n,
                 "obtained": len(works),
             }
-            print(f"  {stratum.key:<28} {len(works):>5} articles", file=sys.stderr)
+            print(f"  {stratum.key:<28} {len(works):>5} papers", file=sys.stderr)
 
-    # JSON Lines : lisible sans dependance, diffable, et l'empreinte porte sur un
-    # format stable dans le temps — ce qu'un parquet ne garantit pas entre versions.
+    # JSON Lines: readable without dependencies, diffable, and the hash covers a format
+    # that is stable over time — which parquet does not guarantee across versions.
     sample_path = out_dir / "sample.jsonl"
     with sample_path.open("w", encoding="utf-8", newline="\n") as fh:
         for row in sorted(rows, key=lambda r: (r["stratum"], r["openalex_id"])):
@@ -232,9 +230,9 @@ def build(settings: Settings, n: int = N_PER_STRATUM, seed: int = SAMPLE_SEED) -
         "n_rows": len(rows),
         "sha256": _sha256(sample_path),
         "note": (
-            "L'echantillon officiel est ce fichier, pas la requete. OpenAlex indexe en "
-            "continu et son indicateur has_fulltext evolue : rejouer la requete plus tard "
-            "peut donner un autre tirage sans qu'aucun bug ne soit en cause."
+            "The official sample is this file, not the request. OpenAlex indexes "
+            "continuously and its has_fulltext flag changes: replaying the request later "
+            "can give another draw without any bug involved."
         ),
     }
     (out_dir / "manifest.json").write_text(
@@ -253,7 +251,7 @@ def _sha256(path: Path) -> str:
 
 
 def _write_latest_pointer(out_dir: Path) -> None:
-    """Un pointeur, pas une copie : l'echantillon lui-meme n'est jamais ecrase."""
+    """A pointer, not a copy: the sample itself is never overwritten."""
     (SAMPLE_DIR / "LATEST").write_text(out_dir.name + "\n", encoding="utf-8")
 
 
@@ -266,13 +264,13 @@ def latest_sample_dir() -> Path | None:
 
 
 def verify(settings: Settings, sample_dir: Path, check_drift: bool = True) -> dict:
-    """Deux controles distincts, a ne jamais confondre.
+    """Two distinct checks, never to be confused.
 
-    * **Integrite** : le fichier correspond-il a son empreinte ? Un echec ici est une
-      corruption ou une modification — toujours une erreur.
-    * **Derive** : rejouer la requete aujourd'hui redonne-t-il les memes identifiants ?
-      Un ecart ici est une information sur OpenAlex, pas un defaut de notre code. Il est
-      mesure et reporte, jamais corrige en silence.
+    * **Integrity**: does the file match its hash? A failure here is corruption or a
+      modification — always an error.
+    * **Drift**: does replaying the request today give back the same identifiers? A gap
+      here is information about OpenAlex, not a defect in our code. It is measured and
+      reported, never silently corrected.
     """
     manifest = json.loads((sample_dir / "manifest.json").read_text(encoding="utf-8"))
     sample_path = sample_dir / "sample.jsonl"
@@ -321,29 +319,28 @@ def main(argv: list[str] | None = None) -> int:
     try:
         settings = Settings.from_env()
     except ConfigError as exc:
-        print(f"erreur de configuration : {exc}", file=sys.stderr)
+        print(f"configuration error: {exc}", file=sys.stderr)
         return 2
 
     if command == "build":
         n = int(args[1]) if len(args) > 1 else N_PER_STRATUM
         print(
-            f"E1 — tirage de {n} articles x {len(strata())} strates "
-            f"(graine {SAMPLE_SEED})",
+            f"E1 — drawing {n} papers x {len(strata())} strata (seed {SAMPLE_SEED})",
             file=sys.stderr,
         )
         out_dir = build(settings, n=n)
         manifest = json.loads((out_dir / "manifest.json").read_text(encoding="utf-8"))
-        print(f"echantillon fige : {out_dir}")
-        print(f"  {manifest['n_rows']} articles, sha256 {manifest['sha256'][:16]}…")
+        print(f"frozen sample: {out_dir}")
+        print(f"  {manifest['n_rows']} papers, sha256 {manifest['sha256'][:16]}…")
 
-        # Le §3 exige >= n par strate croisee. Un tirage court doit etre bruyant : la
-        # premiere version de ce code ramenait 200 articles au lieu de 2 000 sans rien
-        # dire, parce que rien ne verifiait le nombre obtenu contre le nombre demande.
+        # §3 requires >= n per crossed stratum. A short draw must be loud: the first
+        # version of this code brought back 200 papers instead of 2,000 without a word,
+        # because nothing checked the number obtained against the number requested.
         short = {
             key: s for key, s in manifest["strata"].items() if s["obtained"] < s["requested"]
         }
         if short:
-            print(f"  ATTENTION — {len(short)} strates incompletes :", file=sys.stderr)
+            print(f"  WARNING — {len(short)} incomplete strata:", file=sys.stderr)
             for key, s in sorted(short.items()):
                 print(f"    {key:<28} {s['obtained']}/{s['requested']}", file=sys.stderr)
             return 1
@@ -352,19 +349,19 @@ def main(argv: list[str] | None = None) -> int:
     if command == "verify":
         sample_dir = Path(args[1]) if len(args) > 1 else latest_sample_dir()
         if sample_dir is None:
-            print("aucun echantillon : lancer `build` d'abord", file=sys.stderr)
+            print("no sample: run `build` first", file=sys.stderr)
             return 2
         report = verify(settings, sample_dir)
-        print(f"integrite du fichier : {'ok' if report['integrity_ok'] else 'ECHEC'}")
-        print(f"  {report['n_rows']} lignes (attendu {report['expected_rows']})")
+        print(f"file integrity: {'ok' if report['integrity_ok'] else 'FAILED'}")
+        print(f"  {report['n_rows']} rows (expected {report['expected_rows']})")
         if "mean_jaccard" in report:
-            print(f"derive de population : jaccard moyen {report['mean_jaccard']}")
+            print(f"population drift: mean jaccard {report['mean_jaccard']}")
             for key, d in sorted(report["drift"].items()):
                 if d["jaccard"] is not None and d["jaccard"] < 1.0:
-                    print(f"  {key:<28} jaccard={d['jaccard']}  communs={d['shared']}")
+                    print(f"  {key:<28} jaccard={d['jaccard']}  shared={d['shared']}")
         return 0 if report["integrity_ok"] else 1
 
-    print(f"commande inconnue : {command!r} (build | verify)", file=sys.stderr)
+    print(f"unknown command: {command!r} (build | verify)", file=sys.stderr)
     return 2
 
 

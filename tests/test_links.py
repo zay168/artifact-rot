@@ -1,4 +1,4 @@
-"""Extraction des liens depuis le texte integral (E3)."""
+"""Link extraction from full text (E3)."""
 
 from __future__ import annotations
 
@@ -33,9 +33,9 @@ class TestBoilerplate:
             "https://cdn.exemple.org/logo.png",
         ],
     )
-    def test_ecarte_la_fabrication_editoriale(self, url: str) -> None:
-        """Presents dans presque tout PDF. Les compter gonflerait le denominateur avec
-        des liens dont la survie n'interesse personne."""
+    def test_discards_editorial_production_links(self, url: str) -> None:
+        """Present in almost every PDF. Counting them would inflate the denominator with
+        links whose survival interests nobody."""
         assert is_boilerplate(url)
 
     @pytest.mark.parametrize(
@@ -46,36 +46,36 @@ class TestBoilerplate:
             "https://doi.org/10.5281/zenodo.3509134",
         ],
     )
-    def test_ne_touche_pas_aux_artefacts(self, url: str) -> None:
+    def test_leaves_artifacts_alone(self, url: str) -> None:
         assert not is_boilerplate(url)
         assert is_artifact_link(url)
 
-    def test_une_url_de_labo_n_est_pas_un_artefact_reconnu(self) -> None:
-        """Elle reste extraite et sondee, simplement elle ne compte pas dans le rappel."""
+    def test_a_lab_url_is_not_a_recognised_artifact(self) -> None:
+        """It is still extracted and probed; it simply does not count towards recall."""
         assert not is_artifact_link("https://labo.univ-exemple.fr/donnees/")
 
 
-class TestExtractionTextuelle:
-    def test_url_et_doi_nu(self) -> None:
-        text = "Code : https://github.com/labo/p. Donnees : doi:10.5281/zenodo.123."
+class TestTextExtraction:
+    def test_url_and_bare_doi(self) -> None:
+        text = "Code: https://github.com/labo/p. Data: doi:10.5281/zenodo.123."
         found = [url for _, url in iter_raw_links(text)]
         assert "https://github.com/labo/p" in found
         assert "https://doi.org/10.5281/zenodo.123" in found
 
-    def test_url_coupee_par_le_pdf_est_recollee(self) -> None:
-        """Le mode d'echec n°2 de metacheck, sur le chemin d'extraction reel."""
-        text = "Voir https://doi. org/10.7939/DVN/QYMAYV pour les donnees."
+    def test_url_split_by_pdf_is_rejoined(self) -> None:
+        """metacheck failure mode no. 2, on the real extraction path."""
+        text = "See https://doi. org/10.7939/DVN/QYMAYV for the data."
         found = [url for _, url in iter_raw_links(text)]
         assert "https://doi.org/10.7939/DVN/QYMAYV" in found
 
-    def test_ponctuation_finale_retiree(self) -> None:
-        links = extract_links("Donnees : https://zenodo.org/records/42.", **PAPER)
+    def test_trailing_punctuation_removed(self) -> None:
+        links = extract_links("Data: https://zenodo.org/records/42.", **PAPER)
         assert links[0].normalized == "https://zenodo.org/records/42"
 
-    def test_provenance_portee_par_le_lien(self) -> None:
+    def test_provenance_carried_by_the_link(self) -> None:
         text = (
-            "Introduction\nVoir https://github.com/x/corps.\n\n"
-            "Data Availability\nDonnees : https://zenodo.org/records/7.\n\n"
+            "Introduction\nSee https://github.com/x/corps.\n\n"
+            "Data Availability\nData: https://zenodo.org/records/7.\n\n"
             "References\n1. https://github.com/y/cite\n"
         )
         by_host = {link.normalized: link.source for link in extract_links(text, **PAPER)}
@@ -84,14 +84,14 @@ class TestExtractionTextuelle:
         assert by_host["https://github.com/y/cite"] == "references"
 
     def test_deduplication(self) -> None:
-        text = "https://github.com/a/b et http://www.github.com/a/b/ sont le meme depot."
+        text = "https://github.com/a/b and http://www.github.com/a/b/ are the same repository."
         assert len(extract_links(text, **PAPER)) == 1
 
-    def test_union_avec_le_balisage(self) -> None:
-        """Les annotations portent des liens que la cesure fait perdre au texte, et le
-        texte porte des liens que l'editeur n'a pas balises. On prend l'union."""
+    def test_union_with_markup(self) -> None:
+        """Annotations carry links that hyphenation makes the text lose, and the text
+        carries links the publisher did not tag. We take the union."""
         links = extract_links(
-            "Code : https://github.com/labo/depuis-le-texte.",
+            "Code: https://github.com/labo/depuis-le-texte.",
             structured_urls=["https://zenodo.org/records/999"],
             **PAPER,
         )
@@ -99,83 +99,83 @@ class TestExtractionTextuelle:
         assert "https://github.com/labo/depuis-le-texte" in normalized
         assert "https://zenodo.org/records/999" in normalized
 
-    def test_les_liens_du_balisage_sont_en_provenance_body(self) -> None:
-        """Une annotation ne dit pas dans quelle section elle se trouve."""
-        links = extract_links("Texte.", structured_urls=["https://osf.io/abcde"], **PAPER)
+    def test_markup_links_have_body_provenance(self) -> None:
+        """An annotation does not say which section it is in."""
+        links = extract_links("Text.", structured_urls=["https://osf.io/abcde"], **PAPER)
         assert links[0].source == "body"
 
-    def test_identifiant_stable(self) -> None:
+    def test_stable_identifier(self) -> None:
         a = extract_links("https://github.com/a/b", **PAPER)[0]
         b = extract_links("http://www.github.com/a/b/", **PAPER)[0]
         assert a.link_id == b.link_id
 
 
-class TestSurDemande:
-    def test_compte_dans_la_declaration(self) -> None:
+class TestOnRequest:
+    def test_counted_in_the_statement(self) -> None:
         text = (
             "Data Availability\n"
             "Data are available from the corresponding author upon reasonable request.\n"
         )
         assert count_on_request(text) == 1
 
-    def test_ne_compte_pas_hors_declaration(self) -> None:
-        """La formule apparait aussi dans des contextes sans rapport."""
+    def test_not_counted_outside_a_statement(self) -> None:
+        """The phrase also appears in unrelated contexts."""
         text = "Introduction\nLes reactifs ont ete fournis sur demande du comite.\n"
         assert count_on_request(text) == 0
 
-    def test_une_declaration_avec_lien_n_est_pas_sur_demande(self) -> None:
+    def test_a_statement_with_a_link_is_not_on_request(self) -> None:
         text = "Data Availability\nAll data are at https://zenodo.org/records/1.\n"
         assert count_on_request(text) == 0
 
 
-class TestTexteHostile:
-    """Ce qui sort d'un PDF ne doit jamais pouvoir faire tomber la chaine.
+class TestHostileText:
+    """Nothing that comes out of a PDF may bring the pipeline down.
 
-    Rencontre le 2026-09-20 : le moissonnage est mort apres 200 articles sur
-    `UnicodeEncodeError: surrogates not allowed`. Une police de PDF avec une table de
-    caracteres incoherente produit des demi-paires de substitution, que Python accepte
-    en memoire mais qu'aucun encodeur UTF-8 n'accepte.
+    Encountered on 2026-09-20: harvesting died after 200 papers on
+    `UnicodeEncodeError: surrogates not allowed`. A PDF font with an inconsistent
+    character table produces lone surrogates, which Python accepts in memory but no UTF-8
+    encoder accepts.
     """
 
-    def test_les_demi_paires_de_substitution_sont_neutralisees(self) -> None:
+    def test_lone_surrogates_are_neutralised(self) -> None:
         from artifact_rot.fulltext import sanitize
 
-        hostile = "Donnees 𐀀 disponibles \udfff ici"
+        hostile = "Data 𐀀 available \udfff here"
         cleaned = sanitize(hostile)
-        cleaned.encode("utf-8")  # ne doit pas lever
-        assert "Donnees" in cleaned and "disponibles" in cleaned
+        cleaned.encode("utf-8")  # must not raise
+        assert "Data" in cleaned and "available" in cleaned
 
-    def test_le_texte_normal_est_intact(self) -> None:
+    def test_normal_text_is_intact(self) -> None:
         from artifact_rot.fulltext import sanitize
 
         text = "Données disponibles à https://zenodo.org/records/1 — accès libre ✓"
         assert sanitize(text) == text
 
-    def test_extraction_sur_texte_assaini(self) -> None:
+    def test_extraction_on_sanitised_text(self) -> None:
         from artifact_rot.fulltext import sanitize
 
-        text = sanitize("Code : https://github.com/labo/p \ud800 fin.")
+        text = sanitize("Code: https://github.com/labo/p \ud800 end.")
         links = extract_links(text, **PAPER)
         assert any(link.host == "github.com" for link in links)
 
 
-class TestCacheDurable:
-    """Un run de deux semaines ne doit pas etre empoisonne par sa propre interruption.
+class TestDurableCache:
+    """A two-week run must not be poisoned by its own interruption.
 
-    Le 2026-09-20, un run est mort en pleine ecriture et a laisse un fichier tronque.
-    Le run suivant l'a relu et est mort dessus a son tour.
+    On 2026-09-20, a run died mid-write and left a truncated file. The next run read it
+    back and died on it in turn.
     """
 
-    def test_une_entree_corrompue_vaut_absente(self, tmp_path, monkeypatch) -> None:
+    def test_a_corrupt_entry_counts_as_absent(self, tmp_path, monkeypatch) -> None:
         from artifact_rot import fulltext
 
         monkeypatch.setattr(fulltext, "CACHE_DIR", tmp_path)
         path = fulltext.cache_path("W42")
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text('{"paper_id": "W42", "text": "tron', encoding="utf-8")
+        path.write_text('{"paper_id": "W42", "text": "trun', encoding="utf-8")
         assert fulltext.load("W42") is None
 
-    def test_une_entree_vide_vaut_absente(self, tmp_path, monkeypatch) -> None:
+    def test_an_empty_entry_counts_as_absent(self, tmp_path, monkeypatch) -> None:
         from artifact_rot import fulltext
 
         monkeypatch.setattr(fulltext, "CACHE_DIR", tmp_path)
@@ -184,16 +184,16 @@ class TestCacheDurable:
         path.write_text("", encoding="utf-8")
         assert fulltext.load("W43") is None
 
-    def test_aller_retour(self, tmp_path, monkeypatch) -> None:
+    def test_round_trip(self, tmp_path, monkeypatch) -> None:
         from artifact_rot import fulltext
 
         monkeypatch.setattr(fulltext, "CACHE_DIR", tmp_path)
-        doc = fulltext.Document("W44", "https://x/y.pdf", "repository", "pdf", "texte", ["https://z"])
+        doc = fulltext.Document("W44", "https://x/y.pdf", "repository", "pdf", "text", ["https://z"])
         fulltext.save(doc)
         back = fulltext.load("W44")
-        assert back is not None and back.text == "texte" and back.structured_urls == ["https://z"]
+        assert back is not None and back.text == "text" and back.structured_urls == ["https://z"]
 
-    def test_aucun_fichier_temporaire_ne_subsiste(self, tmp_path, monkeypatch) -> None:
+    def test_no_temporary_file_remains(self, tmp_path, monkeypatch) -> None:
         from artifact_rot import fulltext
 
         monkeypatch.setattr(fulltext, "CACHE_DIR", tmp_path)

@@ -1,8 +1,8 @@
-"""Detection des annonces de partage — methode reprise d'ODDPub (CC BY 4.0).
+"""Detecting sharing announcements — method taken from ODDPub (CC BY 4.0).
 
-Les faux positifs testes ici viennent tous du corpus reel du 2026-09-20. Ils sont
-nommes, parce qu'une detection qui declenche sur « these symmetries are not generally
-available in curved space time » ne mesure pas le partage de donnees.
+The false positives tested here all come from the real corpus of 2026-09-20. They are
+named, because a detector that fires on "these symmetries are not generally available in
+curved space time" does not measure data sharing.
 """
 
 from __future__ import annotations
@@ -14,79 +14,79 @@ from artifact_rot.extract.statements import find_availability_spans
 
 
 class TestCoOccurrence:
-    """Une seule categorie ne suffit jamais — c'est le principe repris d'ODDPub."""
+    """A single category is never enough — that is the principle taken from ODDPub."""
 
-    def test_depot_generaliste_plus_verbe_de_depot(self) -> None:
+    def test_general_repository_plus_deposit_verb(self) -> None:
         s = detect("All data are available at https://zenodo.org/records/3509134.")
         assert s.open_data
         assert "general_repo_data" in s.categories
 
-    def test_depot_specialise_plus_numero_d_acces(self) -> None:
+    def test_specialised_repository_plus_accession_number(self) -> None:
         s = detect("Sequences were deposited in the Gene Expression Omnibus under GSE123456.")
         assert s.open_data
         assert "field_repo_accession" in s.categories
 
-    def test_code_source(self) -> None:
+    def test_source_code(self) -> None:
         s = detect("The analysis code is available at https://github.com/labo/projet.")
         assert s.open_code
 
-    def test_mention_isolee_ne_declenche_pas(self) -> None:
-        """« github » dans une bibliographie n'annonce rien."""
-        s = detect("12. Dupont A. Un titre quelconque. github.com/autre/projet, 2019.")
+    def test_isolated_mention_does_not_fire(self) -> None:
+        """"github" in a bibliography announces nothing."""
+        s = detect("12. Dupont A. Some arbitrary title. github.com/other/project, 2019.")
         assert not s.claims_sharing
 
-    def test_nom_de_depot_seul_ne_declenche_pas(self) -> None:
+    def test_repository_name_alone_does_not_fire(self) -> None:
         s = detect("Zenodo is a general-purpose repository operated by CERN.")
         assert not s.claims_sharing
 
 
-class TestFauxPositifsDuCorpusReel:
-    def test_symetries_non_disponibles_en_espace_courbe(self) -> None:
-        """Declenchait `explicitly_restricted` : la forme large `not ... available`
-        attrapait une phrase de physique theorique."""
+class TestFalsePositivesFromRealCorpus:
+    def test_symmetries_not_available_in_curved_space(self) -> None:
+        """Used to fire `explicitly_restricted`: the broad form `not ... available`
+        caught a theoretical-physics sentence."""
         s = detect(
             "These translational symmetries are not generally available in curved "
             "space time and thus Noether's power tools are not available."
         )
         assert not s.explicitly_restricted
 
-    def test_liste_de_references_avec_numeros(self) -> None:
-        """Declenchait `field_repo_accession` : le motif generique d'identifiant
-        attrapait des numeros de reference bibliographique."""
+    def test_reference_list_with_numbers(self) -> None:
+        """Used to fire `field_repo_accession`: the generic identifier pattern caught
+        bibliographic reference numbers."""
         s = detect(
             "[Joffrin et al., 2024] Joffrin, E., Wischmeier, M., Baruzzo, M., "
             "Hakola, A., Kappatou, A., Keeling, D., Labit, B., the ASDEX Upgrade Team."
         )
         assert not s.claims_sharing
 
-    def test_code_pdb_seul_ne_suffit_pas(self) -> None:
-        """Un code PDB a la forme `1ABC` : trop court pour porter un signal seul."""
+    def test_pdb_code_alone_is_not_enough(self) -> None:
+        """A PDB code has the shape `1ABC`: too short to carry a signal alone."""
         s = detect("The structure 6VXX was used as a template for the model.")
         assert not s.open_data
 
 
-class TestRefusEtDemande:
-    def test_refus_explicite(self) -> None:
+class TestRefusalAndRequest:
+    def test_explicit_refusal(self) -> None:
         s = detect("The data are not publicly available due to patient privacy.")
         assert s.explicitly_restricted
         assert not s.claims_sharing
 
-    def test_sur_demande(self) -> None:
+    def test_on_request(self) -> None:
         s = detect(
             "Data Availability The data are available from the corresponding author "
             "upon reasonable request."
         )
         assert s.on_request
 
-    def test_preuve_conservee(self) -> None:
-        """Sans la phrase declencheuse, un desaccord est inarbitrable."""
+    def test_evidence_kept(self) -> None:
+        """Without the triggering sentence, a disagreement cannot be arbitrated."""
         s = detect("All data are available at https://osf.io/ezcuj.")
         assert s.sentences and "osf.io" in s.sentences[0]
 
 
-class TestTitreSansPonctuation:
-    """Mesure du 2026-09-20 : quatre documents sur dix ecrivent le titre sans
-    separateur, l'extraction PDF le collant au paragraphe."""
+class TestHeadingWithoutPunctuation:
+    """Measured on 2026-09-20: four documents out of ten write the heading without a
+    separator, PDF extraction gluing it to the paragraph."""
 
     @pytest.mark.parametrize(
         "text",
@@ -96,8 +96,8 @@ class TestTitreSansPonctuation:
             "Code Availability - the code is at https://github.com/a/b.",
         ],
     )
-    def test_detecte(self, text: str) -> None:
+    def test_detected(self, text: str) -> None:
         assert find_availability_spans(text)
 
-    def test_ne_declenche_pas_sur_une_phrase_ordinaire(self) -> None:
+    def test_does_not_fire_on_an_ordinary_sentence(self) -> None:
         assert not find_availability_spans("We discuss data availability in section 4.")

@@ -1,23 +1,22 @@
-"""E3 — recuperation du texte integral. Sources ouvertes uniquement.
+"""E3 — full-text retrieval. Open sources only.
 
-Trois mesures faites sur l'echantillon le 2026-09-20, qui dictent toute la conception :
+Three measurements made on the sample on 2026-09-20, which drive the whole design:
 
-1. **Le format dominant est le PDF** (54 % des localisations de `best_oa_location`),
-   loin devant le HTML (7 %). Un extracteur qui ne lit que du HTML mesurerait une
-   discipline, pas quatre.
-2. **Europe PMC ne couvre que la medecine** : 38 % des articles medicaux disponibles en
-   JATS, 1 a 2 % ailleurs. Excellente source, mais pas une source d'echantillon.
-3. **Preferer les depots aux sites d'editeurs fait passer le taux de recuperation de
-   61 % a 72 %.** Les gros editeurs (Wiley, ScienceDirect, MDPI, OUP) repondent 403 a un
-   robot ; les depots institutionnels, arXiv et PMC ne le font pas.
+1. **The dominant format is PDF** (54% of `best_oa_location` locations), far ahead of
+   HTML (7%). An extractor that only reads HTML would measure one discipline, not four.
+2. **Europe PMC only covers medicine**: 38% of medical papers available as JATS, 1 to 2%
+   elsewhere. An excellent source, but not a sample-wide source.
+3. **Preferring repositories over publisher sites raises the retrieval rate from 61% to
+   72%.** Large publishers (Wiley, ScienceDirect, MDPI, OUP) answer 403 to a robot;
+   institutional repositories, arXiv and PMC do not.
 
-D'ou l'ordre de preference : depot d'abord, editeur en dernier. Ce n'est pas un
-contournement — on demande poliment ailleurs une copie que l'auteur a lui-meme deposee.
-Un 403 reste un 403 : on ne le force jamais.
+Hence the order of preference: repository first, publisher last. This is not a
+workaround — we politely ask elsewhere for a copy the author deposited themselves. A 403
+remains a 403: it is never forced.
 
-**L'attrition residuelle (~28 %) est une limite, pas un detail.** Elle doit etre mesuree
-par strate : si elle est correlee a l'annee, elle biaise la variable explicative
-principale. `coverage_report` produit ce chiffre, et E6 doit le publier.
+**The residual attrition (~28%) is a limitation, not a detail.** It must be measured by
+stratum: if it correlates with year, it biases the main explanatory variable.
+`coverage_report` produces this figure, and E6 must publish it.
 """
 
 from __future__ import annotations
@@ -39,20 +38,20 @@ OPENALEX = "https://api.openalex.org"
 DocKind = Literal["pdf", "html", "jats", "none"]
 
 MAX_LOCATION_ATTEMPTS = 4
-"""Nombre maximal de localisations essayees pour un article.
+"""Maximum number of locations tried for a paper.
 
-Quatre essais couvrent le cas normal (PDF de depot, PDF d'editeur, page de depot,
-page d'editeur). Au-dela, on paie des timeouts pour apprendre ce qu'on sait deja."""
+Four attempts cover the normal case (repository PDF, publisher PDF, repository page,
+publisher page). Beyond that, we pay for timeouts to learn what we already know."""
 
 
 @dataclass
 class Document:
-    """Un texte integral recupere, avec ses liens balises par la source.
+    """A retrieved full text, with the links tagged by the source.
 
-    `structured_urls` est la cle d'E3 : ce sont les URL posees par l'editeur
-    (annotations `/URI` d'un PDF, `<a href>` d'un HTML, `<ext-link>` d'un JATS). Elles
-    constituent une verite terrain gratuite contre laquelle mesurer le rappel de
-    l'extraction textuelle — le meme principe que celui qui fonde le projet entier.
+    `structured_urls` is the key to E3: these are the URLs placed by the publisher (`/URI`
+    annotations in a PDF, `<a href>` in HTML, `<ext-link>` in JATS). They form a free
+    ground truth against which to measure the recall of text extraction — the same
+    principle the whole project rests on.
     """
 
     paper_id: str
@@ -68,24 +67,23 @@ class Document:
         return self.kind != "none" and bool(self.text)
 
 
-# --- Choix de la localisation ------------------------------------------------------
+# --- Choosing the location ---------------------------------------------------------
 
 
 def rank_locations(locations: list[dict]) -> list[tuple[str, str]]:
-    """Ordonne les localisations ouvertes. **Tout PDF passe avant toute page HTML.**
+    """Order open locations. **Every PDF comes before every HTML page.**
 
-    La premiere version classait par type de source seulement — depots d'abord — et
-    choisissait donc la page de notice d'un depot (par exemple `zenodo.org/records/…`)
-    avant le PDF de l'editeur. Or **une page de notice n'est pas l'article** : son texte
-    est celui du site hote, et ses liens sont ceux de son menu et de son pied de page.
+    The first version ranked by source type only — repositories first — and so picked a
+    repository's record page (for example `zenodo.org/records/…`) before the publisher's
+    PDF. But **a record page is not the paper**: its text is the host site's, and its
+    links are those of its menu and footer.
 
-    Le defaut ne s'est pas vu a la recuperation, qui « marchait ». Il s'est vu au calcul
-    de rappel : les liens de depot soi-disant manques etaient en realite les liens du
-    site Zenodo vers son propre code (`github.com/zenodo/zenodo-rdm`). Sans cette
-    mesure, tout le run S1 aurait extrait des liens de pages de notice au lieu
-    d'articles.
+    The defect did not show at retrieval, which "worked". It showed in the recall
+    computation: the supposedly missed repository links were in fact the Zenodo site's
+    links to its own code (`github.com/zenodo/zenodo-rdm`). Without that measurement, the
+    whole S1 run would have extracted links from record pages instead of papers.
 
-    D'ou l'ordre : PDF de depot, PDF d'editeur, page de depot, page d'editeur.
+    Hence the order: repository PDF, publisher PDF, repository page, publisher page.
     """
     buckets: dict[tuple[int, int], list[tuple[str, str]]] = {}
     for loc in locations:
@@ -100,15 +98,15 @@ def rank_locations(locations: list[dict]) -> list[tuple[str, str]]:
 
     ordered = [item for key in sorted(buckets) for item in buckets[key]]
 
-    # Un seul essai par hote, et MAX_LOCATION_ATTEMPTS au total.
+    # One attempt per host, and MAX_LOCATION_ATTEMPTS in total.
     #
-    # Mesure du 2026-09-20 : sans cette limite, le moissonnage tombait a ~2 articles
-    # par minute, parce qu'un article a parfois dix localisations dont plusieurs chez
-    # le meme editeur — qui repond 403 ou expire a chaque fois. On payait donc le meme
-    # timeout de vingt secondes cinq fois de suite pour apprendre la meme chose.
+    # Measured on 2026-09-20: without this limit, harvesting fell to ~2 papers per
+    # minute, because a paper sometimes has ten locations, several at the same publisher
+    # — which answers 403 or times out every time. We were paying the same twenty-second
+    # timeout five times in a row to learn the same thing.
     #
-    # Insister chez un hote qui vient de refuser n'est pas seulement lent : c'est
-    # exactement ce que le §4, piege 5, interdit.
+    # Insisting with a host that has just refused is not only slow: it is exactly what
+    # §4, pitfall 5, forbids.
     seen_hosts: set[str] = set()
     capped: list[tuple[str, str]] = []
     for url, stype in ordered:
@@ -131,7 +129,7 @@ def fetch_locations(client: httpx.Client, paper_id: str, settings: Settings) -> 
     return r.json().get("locations") or []
 
 
-# --- Recuperation -------------------------------------------------------------------
+# --- Retrieval ---------------------------------------------------------------------
 
 _WAF = re.compile(r"(just a moment|checking your browser|cloudflare|captcha|access denied)", re.IGNORECASE)
 
@@ -139,8 +137,8 @@ _WAF = re.compile(r"(just a moment|checking your browser|cloudflare|captcha|acce
 def fetch_document(
     client: httpx.Client, paper_id: str, locations: list[dict], settings: Settings
 ) -> Document:
-    """Essaie les localisations dans l'ordre et retient la premiere exploitable."""
-    last_error = "aucune localisation ouverte"
+    """Try the locations in order and keep the first usable one."""
+    last_error = "no open location"
     for url, stype in rank_locations(locations):
         try:
             r = client.get(url)
@@ -166,26 +164,26 @@ def fetch_document(
                     continue
                 text, urls = read_html(r.text)
                 return Document(paper_id, url, stype, "html", text, urls)
-        except Exception as exc:  # noqa: BLE001 — un document illisible n'arrete pas un run
+        except Exception as exc:  # noqa: BLE001 — an unreadable document does not stop a run
             last_error = f"parse:{type(exc).__name__}"
             continue
-        last_error = f"content_type:{ctype or 'vide'}"
+        last_error = f"content_type:{ctype or 'empty'}"
 
     return Document(paper_id, "", "", "none", error=last_error)
 
 
-# --- Lecture par format --------------------------------------------------------------
+# --- Reading by format ---------------------------------------------------------------
 
 
 def read_pdf(payload: bytes) -> tuple[str, list[str]]:
-    """Texte rendu + annotations de lien.
+    """Rendered text + link annotations.
 
-    Les annotations `/URI` sont posees par l'editeur au moment de la fabrication du PDF.
-    Mesure du 2026-09-20 : 52 % des PDF en portent, et elles contiennent plus d'URL que
-    le texte brut (276 contre 188 sur un echantillon de 29 PDF) — l'ecart est exactement
-    ce que la cesure de ligne fait perdre a une extraction purement textuelle.
+    `/URI` annotations are placed by the publisher when the PDF is produced. Measured on
+    2026-09-20: 52% of PDFs carry them, and they contain more URLs than the raw text (276
+    against 188 on a sample of 29 PDFs) — the gap is exactly what line hyphenation makes a
+    purely textual extraction lose.
     """
-    from pypdf import PdfReader  # import tardif : pypdf est lent a charger
+    from pypdf import PdfReader  # late import: pypdf is slow to load
 
     reader = PdfReader(io.BytesIO(payload))
     urls: list[str] = []
@@ -193,7 +191,7 @@ def read_pdf(payload: bytes) -> tuple[str, list[str]]:
     for page in reader.pages:
         try:
             chunks.append(page.extract_text() or "")
-        except Exception:  # noqa: BLE001,S110 — une page illisible n'invalide pas le document
+        except Exception:  # noqa: BLE001,S110 — an unreadable page does not invalidate the document
             pass
         for annot in page.get("/Annots") or []:
             try:
@@ -201,7 +199,7 @@ def read_pdf(payload: bytes) -> tuple[str, list[str]]:
                 uri = action.get("/URI")
                 if uri:
                     urls.append(str(uri))
-            except Exception:  # noqa: BLE001,S110 — une annotation illisible est ignoree
+            except Exception:  # noqa: BLE001,S110 — an unreadable annotation is ignored
                 pass
     return sanitize("\n".join(chunks)), [sanitize(u) for u in _dedupe_preserving(urls)]
 
@@ -222,7 +220,7 @@ _EXT_LINK = re.compile(
 
 
 def read_jats(payload: str) -> tuple[str, list[str]]:
-    """JATS : `<ext-link>` est le balisage editorial le plus explicite qui existe."""
+    """JATS: `<ext-link>` is the most explicit editorial markup there is."""
     urls = [
         sanitize(u) for u in _EXT_LINK.findall(payload) if u.startswith(("http", "doi:", "10."))
     ]
@@ -231,20 +229,20 @@ def read_jats(payload: str) -> tuple[str, list[str]]:
 
 
 def sanitize(text: str) -> str:
-    """Rend un texte ecrivable en UTF-8, quoi qu'il contienne.
+    """Make a text writable as UTF-8, whatever it contains.
 
-    Mesure du 2026-09-20 : l'extraction PDF produit parfois des **demi-paires de
-    substitution** — des points de code UTF-16 isoles, que Python accepte en memoire
-    mais qu'aucun encodeur UTF-8 n'accepte. Le moissonnage est mort dessus apres
-    200 articles, sur `UnicodeEncodeError: surrogates not allowed`.
+    Measured on 2026-09-20: PDF extraction sometimes produces **lone surrogates** —
+    isolated UTF-16 code points, which Python accepts in memory but no UTF-8 encoder
+    accepts. Harvesting died on one after 200 papers, on
+    `UnicodeEncodeError: surrogates not allowed`.
 
-    Ce n'est pas un cas exotique : un PDF est un format ou les polices declarent leurs
-    propres tables de caracteres, et une table incoherente produit exactement ca. Sur
-    40 000 articles, ce defaut aurait interrompu le run a un moment imprevisible — et
-    apres des heures de travail deja faites.
+    This is not an exotic case: PDF is a format in which fonts declare their own
+    character tables, and an inconsistent table produces exactly this. Over 40,000
+    papers, this defect would have interrupted the run at an unpredictable moment — and
+    after hours of work already done.
 
-    Meme principe que pour les URL hostiles : rien de ce qui sort d'un PDF ne doit
-    pouvoir faire tomber la chaine.
+    Same principle as for hostile URLs: nothing that comes out of a PDF should be able to
+    bring the pipeline down.
     """
     return text.encode("utf-8", "replace").decode("utf-8")
 
@@ -273,21 +271,21 @@ def _dedupe_preserving(urls: list[str]) -> list[str]:
 
 
 def cache_path(paper_id: str) -> Path:
-    # Deux niveaux : 40 000 fichiers dans un seul repertoire est ingerable sous Windows.
+    # Two levels: 40,000 files in a single directory is unmanageable on Windows.
     return CACHE_DIR / paper_id[1:4] / f"{paper_id}.json"
 
 
 def save(doc: Document) -> None:
-    """Ecriture **atomique** : fichier temporaire puis renommage.
+    """**Atomic** write: temporary file, then rename.
 
-    Le 2026-09-20, un run est mort en pleine ecriture et a laisse un fichier de cache
-    tronque. Le run suivant a repris, l'a relu, et est mort dessus a son tour — un run
-    interrompu empoisonnait donc tous les suivants.
+    On 2026-09-20, a run died mid-write and left a truncated cache file. The next run
+    resumed, read it back, and died on it in turn — so one interrupted run poisoned all
+    the following ones.
 
-    Un renommage est atomique sur les systemes de fichiers usuels : le fichier final
-    est soit absent, soit complet, jamais a moitie ecrit. C'est la meme exigence que
-    `synchronous=FULL` sur la file SQLite (§E4), pour la meme raison : le projet dure
-    deux semaines et rien ne garantit qu'il ne sera pas interrompu.
+    A rename is atomic on usual file systems: the final file is either absent or
+    complete, never half-written. It is the same requirement as `synchronous=FULL` on the
+    SQLite queue (§E4), for the same reason: the project lasts two weeks and nothing
+    guarantees it will not be interrupted.
     """
     path = cache_path(doc.paper_id)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -309,11 +307,10 @@ def save(doc: Document) -> None:
 
 
 def load(paper_id: str) -> Document | None:
-    """Lit une entree du cache. Une entree illisible vaut **absente**, jamais une erreur.
+    """Read a cache entry. An unreadable entry counts as **absent**, never as an error.
 
-    Un cache est une optimisation, pas une source de verite : s'il est corrompu, on
-    re-telecharge. Le faire lever arreterait un run de deux semaines a cause d'un
-    fichier reconstructible en une requete.
+    A cache is an optimisation, not a source of truth: if it is corrupt, we download
+    again. Raising would stop a two-week run because of a file rebuildable in one request.
     """
     path = cache_path(paper_id)
     if not path.exists():

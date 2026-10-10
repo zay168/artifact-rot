@@ -1,19 +1,18 @@
-"""Software Heritage : separer « a disparu » de « n'a jamais existe » (§4, piege 3).
+"""Software Heritage: separating "disappeared" from "never existed" (§4, pitfall 3).
 
-Software Heritage archive en continu les forges publiques. Si SWH connait une origine,
-le depot a existe publiquement a une date connue. Cela ne dit rien de son etat
-aujourd'hui — ce n'est donc pas une sonde d'etat, et la classe ci-dessous n'est
-volontairement pas un `Prober`.
+Software Heritage continuously archives public forges. If SWH knows an origin, the
+repository existed publicly at a known date. That says nothing about its state today —
+so it is not a state prober, and the class below is deliberately not a `Prober`.
 
-C'est l'enrichissement qui rend le chiffre principal defendable sur deux points :
+It is the enrichment that makes the main figure defensible on two points:
 
-* un depot GitHub en 404 dont SWH possede une archive a bien vecu puis est mort : c'est
-  du rot au sens strict ;
-* un depot GitHub en 404 inconnu de SWH peut n'avoir jamais existe (faute de frappe
-  dans l'article, depot toujours reste prive), ce qui releve du controle editorial.
+* a GitHub repository returning 404 that SWH has archived did live and then die: that is
+  rot in the strict sense;
+* a GitHub repository returning 404 unknown to SWH may never have existed (a typo in the
+  paper, a repository that always stayed private), which falls under editorial control.
 
-Sans cette distinction, les deux populations sont melangees dans le meme taux, ce que
-le §4 interdit explicitement.
+Without this distinction, the two populations are mixed into the same rate, which §4
+explicitly forbids.
 """
 
 from __future__ import annotations
@@ -30,7 +29,7 @@ VISITS_API = "https://archive.softwareheritage.org/api/1/origin/{origin}/visits/
 @dataclass(frozen=True)
 class ArchiveEvidence:
     known: bool | None
-    """True : SWH connait l'origine. False : inconnue. None : indetermine (crawler en echec)."""
+    """True: SWH knows the origin. False: unknown. None: undetermined (crawler failure)."""
     first_visit: str | None = None
     last_visit: str | None = None
     reason: str = ""

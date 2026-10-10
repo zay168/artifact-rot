@@ -1,37 +1,36 @@
-"""Resolution DNS : distinguer « ce nom n'existe pas » d'un echec du resolveur.
+"""DNS resolution: distinguishing "this name does not exist" from a resolver failure.
 
-**Decision de classification, prise le 2026-09-21, avant la passe 3 et donc avant
-d'avoir vu le moindre resultat final.** C'est le moment ou elle doit etre prise : apres,
-toute modification de la classification serait soupconnable d'avoir ete ajustee au
-resultat, et le serait a juste titre.
+**Classification decision, taken on 2026-09-21, before pass 3 and therefore before
+seeing any final result.** That is when it must be taken: afterwards, any change to the
+classification could be suspected of having been tuned to the result, and rightly so.
 
-### La question
+### The question
 
-Le §4 du plan definit `dead` comme « l'inexistence positivement confirmee » et `unknown`
-comme « le crawler a echoue ». Ou tombe un nom de domaine qui ne resout plus ?
+The plan's §4 defines `dead` as "positively confirmed non-existence" and `unknown` as
+"the crawler failed". Where does a domain name that no longer resolves fall?
 
-Mesure sur la passe 1 : sur 521 hotes derriere un echec de connexion ou une expiration
-de delai, **174 n'ont aucun enregistrement DNS** — un tiers.
+Measured on pass 1: of 521 hosts behind a connection failure or a timeout, **174 have no
+DNS record at all** — one third.
 
-### La reponse retenue : `dead`
+### The answer adopted: `dead`
 
-Un NXDOMAIN **n'est pas un echec du crawler**. Le systeme des noms de domaine a
-repondu, et il a repondu que ce nom n'existe pas. Le crawler a parfaitement fonctionne ;
-c'est la ressource qui a disparu, jusqu'a son adresse. Du point de vue du lecteur qui
-veut reproduire, il n'y a rien a tenter.
+An NXDOMAIN **is not a crawler failure**. The domain name system answered, and it
+answered that this name does not exist. The crawler worked perfectly; it is the resource
+that disappeared, down to its address. From the point of view of a reader wanting to
+reproduce, there is nothing left to try.
 
-Trois garde-fous, parce que la consequence est lourde :
+Three safeguards, because the consequence is heavy:
 
-1. **Seul `EAI_NONAME` compte.** `EAI_AGAIN` (echec temporaire) et `EAI_FAIL` restent
-   `unknown`. Verifie sur cette plateforme : les codes sont bien distincts (11001,
-   11002, 11003).
-2. **La regle des trois passes s'applique sans exception.** Un domaine doit ne pas
-   resoudre a trois dates espacees d'au moins dix jours pour etre declare mort. Une
-   panne de resolveur d'un jour ne peut pas produire un lien mort.
-3. **Le compte est reporte a part.** E6 doit publier le nombre de morts obtenues par
-   `dns_nxdomain`, pour qu'un lecteur en desaccord avec ce choix puisse le soustraire
-   et refaire le calcul. Une decision de classification qu'on ne peut pas defaire est
-   une decision qu'on impose.
+1. **Only `EAI_NONAME` counts.** `EAI_AGAIN` (temporary failure) and `EAI_FAIL` stay
+   `unknown`. Checked on this platform: the codes are indeed distinct (11001, 11002,
+   11003).
+2. **The three-pass rule applies without exception.** A domain must fail to resolve on
+   three dates at least ten days apart to be declared dead. A one-day resolver outage
+   cannot produce a dead link.
+3. **The count is reported separately.** E6 must publish the number of deaths obtained
+   through `dns_nxdomain`, so that a reader who disagrees with this choice can subtract
+   it and redo the computation. A classification decision that cannot be undone is a
+   decision imposed on the reader.
 """
 
 from __future__ import annotations
@@ -55,10 +54,10 @@ _lock = threading.Lock()
 
 
 def resolve(host: str) -> DnsVerdict:
-    """Le nom resout-il ? Resultat memorise : un run touche 2 000 hotes, pas 4 000 fois.
+    """Does the name resolve? Result memoised: a run touches 2,000 hosts, not 4,000 times.
 
-    Ne leve jamais. Un nom vide ou aberrant rend `unknown`, jamais une exception — meme
-    exigence que partout ailleurs sur ce qui sort d'un PDF.
+    Never raises. An empty or aberrant name returns `unknown`, never an exception — same
+    requirement as everywhere else for whatever comes out of a PDF.
     """
     if not host:
         return "unknown"
@@ -78,7 +77,7 @@ def resolve(host: str) -> DnsVerdict:
             verdict = "transient"
         else:
             verdict = "unknown"
-    except Exception:  # noqa: BLE001 — rien ne doit faire tomber une sonde
+    except Exception:  # noqa: BLE001 — nothing may bring down a probe
         verdict = "unknown"
 
     with _lock:
@@ -87,7 +86,7 @@ def resolve(host: str) -> DnsVerdict:
 
 
 def reset_cache() -> None:
-    """Vide la memoire des resolutions. Utile entre deux passes : dix jours separent
-    une passe de la suivante, et un domaine peut avoir change d'etat."""
+    """Clear the resolution memory. Useful between two passes: ten days separate one pass
+    from the next, and a domain may have changed state."""
     with _lock:
         _cache.clear()

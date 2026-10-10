@@ -1,7 +1,7 @@
-"""Routage des sondes et heuristiques de soft-404, testes hors ligne.
+"""Prober routing and soft-404 heuristics, tested offline.
 
-Le routage est teste parce qu'une erreur d'aiguillage envoie un lien GitHub vers la
-sonde HTTP generique, qui lira du HTML — exactement ce que le §4 interdit.
+Routing is tested because a routing error sends a GitHub link to the generic HTTP prober,
+which will read HTML — exactly what §4 forbids.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ def link(url: str) -> Link:
     )
 
 
-class TestRoutage:
+class TestRouting:
     @pytest.mark.parametrize(
         ("url", "expected"),
         [
@@ -52,8 +52,8 @@ class TestRoutage:
     def test_selection(self, url: str, expected: str) -> None:
         assert default_registry().select(link(url)).name == expected
 
-    def test_les_api_passent_avant_le_html(self) -> None:
-        """Invariant du §4 : aucun hote a API ne doit tomber sur la sonde generique."""
+    def test_apis_come_before_html(self) -> None:
+        """§4 invariant: no host with an API may fall to the generic prober."""
         registry = default_registry()
         for url in (
             "https://github.com/a/b",
@@ -65,40 +65,40 @@ class TestRoutage:
 
 
 class TestSoft404:
-    def test_redirection_vers_la_racine(self) -> None:
+    def test_redirect_to_root(self) -> None:
         assert _redirected_to_root("https://lab.fr/donnees/set1", "https://lab.fr/")
 
-    def test_redirection_interne_legitime(self) -> None:
+    def test_legitimate_internal_redirect(self) -> None:
         assert not _redirected_to_root("https://lab.fr/donnees", "https://lab.fr/donnees/v2")
 
-    def test_racine_vers_racine_n_est_pas_un_signal(self) -> None:
+    def test_root_to_root_is_not_a_signal(self) -> None:
         assert not _redirected_to_root("https://lab.fr/", "https://lab.fr/")
 
-    def test_deux_pages_d_erreur_identiques_au_bruit_pres(self) -> None:
+    def test_two_error_pages_identical_up_to_noise(self) -> None:
         a = "<html><title>Not Found</title><body>Request id 8f3a91bc2d id 4412</body></html>"
         b = "<html><title>Not Found</title><body>Request id 11de77aa90 id 9930</body></html>"
         assert _similarity(a, b) >= SOFT404_SIMILARITY
 
-    def test_une_vraie_page_differe_de_la_page_d_erreur(self) -> None:
+    def test_a_real_page_differs_from_the_error_page(self) -> None:
         page = "<html><title>Dataset: soil cores 2014</title><body>Download 1.2 GB NetCDF</body></html>"
         err = "<html><title>Not Found</title><body>The page you requested does not exist</body></html>"
         assert _similarity(page, err) < SOFT404_SIMILARITY
 
-    def test_extraction_du_titre(self) -> None:
+    def test_title_extraction(self) -> None:
         assert _title_of("<html><TITLE> Page Not Found </TITLE></html>") == "Page Not Found"
-        assert _title_of("<html><body>rien</body></html>") is None
+        assert _title_of("<html><body>nothing</body></html>") is None
 
 
-class TestJeuDeControle:
-    def test_reproductible_a_graine_fixe(self) -> None:
+class TestControlSet:
+    def test_reproducible_with_fixed_seed(self) -> None:
         from artifact_rot.control import build_cases
 
         a = [c.url for c in build_cases()]
         b = [c.url for c in build_cases()]
         assert a == b
 
-    def test_les_cas_morts_sont_bien_formes(self) -> None:
-        """Un cas `dead` mal forme testerait `is_malformed`, pas la sonde."""
+    def test_dead_cases_are_well_formed(self) -> None:
+        """A malformed `dead` case would test `is_malformed`, not the prober."""
         from artifact_rot.control import build_cases
         from artifact_rot.extract.normalize import is_malformed
 
@@ -106,8 +106,8 @@ class TestJeuDeControle:
             if case.family == "dead":
                 assert not is_malformed(case.url), case.url
 
-    def test_verdict_non_emis_si_une_famille_manque(self) -> None:
-        """Annoncer 98 % en omettant `restricted` serait une mise en scene."""
+    def test_no_verdict_if_a_family_is_missing(self) -> None:
+        """Announcing 98% while omitting `restricted` would be window dressing."""
         from artifact_rot.control import _score
 
         report = _score(
@@ -117,29 +117,29 @@ class TestJeuDeControle:
                 {"family": "malformed", "case_id": "m", "url": "u", "observed": "malformed", "correct": True, "reason": "r"},
             ]
         )
-        assert report["verdict"] == "incomplet"
+        assert report["verdict"] == "incomplete"
         assert report["missing_families"] == ["restricted"]
 
 
 class TestDNS:
-    """Un nom de domaine qui n'existe plus est une reponse, pas un echec du crawler.
+    """A domain name that no longer exists is an answer, not a crawler failure.
 
-    Decision prise le 2026-09-21, avant la passe 3 et donc avant d'avoir vu le moindre
-    resultat final — le seul moment ou elle peut etre prise sans soupcon.
+    Decision taken on 2026-09-21, before pass 3 and therefore before seeing any final
+    result — the only moment it can be taken without suspicion.
     """
 
-    def test_nom_inexistant(self) -> None:
+    def test_nonexistent_name(self) -> None:
         from artifact_rot.probe.dns import resolve
 
         assert resolve("absent-" + "z" * 24 + "-artifact-rot.invalid") == "nxdomain"
 
-    def test_nom_vide_ne_leve_pas(self) -> None:
+    def test_empty_name_does_not_raise(self) -> None:
         from artifact_rot.probe.dns import resolve
 
         assert resolve("") == "unknown"
 
-    def test_les_codes_temporaires_ne_sont_pas_nxdomain(self) -> None:
-        """Le garde-fou central : une panne de resolveur ne doit pas produire un mort."""
+    def test_transient_codes_are_not_nxdomain(self) -> None:
+        """The central safeguard: a resolver outage must not produce a dead link."""
         import socket
 
         from artifact_rot.probe import dns
@@ -151,7 +151,7 @@ class TestDNS:
             if code is not None:
                 assert code not in dns._NXDOMAIN_ERRNOS, name
 
-    def test_memorisation(self) -> None:
+    def test_memoisation(self) -> None:
         from artifact_rot.probe.dns import _cache, reset_cache, resolve
 
         reset_cache()
@@ -162,24 +162,24 @@ class TestDNS:
         assert host not in _cache
 
 
-class TestTldInvalide:
-    """`arcjournals.or` : un `.org` tronque a l'extraction, pas un site disparu.
+class TestInvalidTld:
+    """`arcjournals.or`: a `.org` truncated at extraction, not a vanished site.
 
-    Le compter mort ajouterait au taux de mortalite un lien qui n'a jamais existe — et
-    dans le sens qui arrange la these du projet.
+    Counting it dead would add to the mortality rate a link that never existed — and in
+    the direction that suits the project's thesis.
     """
 
-    def test_tld_absent_de_l_iana(self) -> None:
+    def test_tld_absent_from_iana(self) -> None:
         from artifact_rot.extract.normalize import is_malformed
 
         assert is_malformed("https://arcjournals.or/article/12")
 
-    def test_tld_valide(self) -> None:
+    def test_valid_tld(self) -> None:
         from artifact_rot.extract.normalize import is_malformed
 
         assert not is_malformed("https://arcjournals.org/article/12")
 
-    def test_la_liste_est_chargee(self) -> None:
+    def test_list_is_loaded(self) -> None:
         from artifact_rot.extract.normalize import VALID_TLDS
 
         assert len(VALID_TLDS) > 1000

@@ -1,35 +1,33 @@
-"""E4 — ordonnanceur des trois passes, file persistante, reprise.
+"""E4 — scheduler for the three passes, persistent queue, resumption.
 
-Critere de passage (PLAN.md §7) : **passe a blanc complete sans depasser les quotas.**
+Pass criterion (PLAN.md §7): **a complete dry run without exceeding quotas.**
 
-Le cout du projet n'est pas le calcul, c'est le **temps calendaire** (§8). Trois sondes
-espacees d'au moins dix jours imposent deux semaines entre la premiere et la derniere.
-Ce n'est pas du travail, c'est de l'attente — et elle est gratuite si elle est
-anticipee, couteuse si on la decouvre a la fin.
+The project's cost is not computation, it is **calendar time** (§8). Three probes at
+least ten days apart impose two weeks between the first and the last. That is not work,
+it is waiting — and it is free if anticipated, costly if discovered at the end.
 
-L'ordonnanceur doit donc survivre a tout : une coupure reseau, un redemarrage, une
-fermeture de portable pendant douze jours. D'ou une file **SQLite**, pas un fichier
-tenu en memoire : chaque sonde est ecrite des qu'elle revient, et reprendre revient a
-relancer la meme commande.
+The scheduler must therefore survive anything: a network cut, a restart, a laptop closed
+for twelve days. Hence a **SQLite** queue, not a file held in memory: each probe is
+written as soon as it returns, and resuming means running the same command again.
 
-### Economie assumee : on arrete de sonder un lien vivant
+### A deliberate saving: we stop probing a live link
 
-La regle de resolution (§5) dit qu'une seule observation vivante l'emporte. Sonder deux
-fois de plus un lien deja vu vivant n'ajoute rien a son statut, et represente l'essentiel
-du trafic. On s'arrete donc des qu'un lien est `alive` ou `restricted`.
+The resolution rule (§5) says a single live observation wins. Probing a link already
+seen alive twice more adds nothing to its status, and accounts for most of the traffic.
+We therefore stop as soon as a link is `alive` or `restricted`.
 
-Trois consequences, toutes assumees :
+Three consequences, all accepted:
 
-* le trafic impose aux hebergeurs chute d'environ 80 % — ce qui est le §4, piege 5 ;
-* un lien qui meurt entre la passe 1 et la passe 3 est compte vivant. La mesure est
-  donc **conservatrice** : elle sous-estime la mortalite, jamais l'inverse ;
-* les trois sondes restent obligatoires pour declarer un lien mort, sans exception.
+* traffic imposed on hosts drops by about 80% — which is §4, pitfall 5;
+* a link that dies between pass 1 and pass 3 is counted alive. The measurement is
+  therefore **conservative**: it underestimates mortality, never the reverse;
+* all three probes remain mandatory to declare a link dead, without exception.
 
-Usage :
+Usage:
     python -m artifact_rot.schedule load runs/<...>/links.jsonl
-    python -m artifact_rot.schedule plan          # ce que la prochaine passe ferait
-    python -m artifact_rot.schedule dryrun        # passe a blanc, sans reseau
-    python -m artifact_rot.schedule run           # passe reelle
+    python -m artifact_rot.schedule plan          # what the next pass would do
+    python -m artifact_rot.schedule dryrun        # dry run, no network
+    python -m artifact_rot.schedule run           # real pass
     python -m artifact_rot.schedule status
 """
 
@@ -61,27 +59,27 @@ MAX_ATTEMPTS = 3
 TERMINAL = {Status.ALIVE, Status.RESTRICTED}
 
 HOST_BUDGETS_ARE_RATES = """
-Un budget est un **debit horaire**, pas un plafond de passe.
+A budget is an **hourly rate**, not a per-pass ceiling.
 
-La premiere version le traitait comme un total : une passe s'arretait des que l'hote
-avait recu son quota, et laissait le reste des liens non sondes. C'est faux. Une passe
-qui demande 2 919 resolutions de DOI avec un budget de 1 000 a l'heure n'est pas une
-passe interdite : c'est une passe de trois heures.
+The first version treated it as a total: a pass stopped as soon as the host had received
+its quota, and left the remaining links unprobed. That is wrong. A pass that needs 2,919
+DOI resolutions with a budget of 1,000 per hour is not a forbidden pass: it is a
+three-hour pass.
 
-`run_pass` espace donc les requetes de `3600 / budget` secondes par hote, et la passe
-dure le temps qu'il faut. Le cout du projet est le temps calendaire (§8) ; le depenser
-en etant poli est exactement ce que le §4, piege 5, demande.
+`run_pass` therefore spaces requests by `3600 / budget` seconds per host, and the pass
+lasts as long as it takes. The project's cost is calendar time (§8); spending it on
+being polite is exactly what §4, pitfall 5, asks for.
 """
 
 HOST_BUDGETS: dict[str, int] = {
-    # Requetes que l'on s'autorise par heure et par hote. Volontairement **en dessous**
-    # des limites annoncees : on ne joue pas au plus pres d'un quota chez quelqu'un
-    # d'autre. GitHub authentifie annonce 5 000/h, on en prend 2 000.
+    # Requests we allow ourselves per hour and per host. Deliberately **below** the
+    # announced limits: we do not play close to someone else's quota. Authenticated
+    # GitHub announces 5,000/h; we take 2,000.
     "api.github.com": 2000,
     "gitlab.com": 300,
     "api.bitbucket.org": 500,
-    # Zenodo documente 60 requetes/minute pour un client anonyme, et son equipe signale
-    # publiquement bloquer chaque jour des clients trop agressifs. On prend le quart.
+    # Zenodo documents 60 requests/minute for an anonymous client, and its team publicly
+    # reports blocking overly aggressive clients every day. We take a quarter of that.
     "zenodo.org": 900,
     "api.osf.io": 600,
     "api.figshare.com": 600,
@@ -90,30 +88,29 @@ HOST_BUDGETS: dict[str, int] = {
     "eutils.ncbi.nlm.nih.gov": 3600,
     "_default": 600,
 }
-"""Le budget par defaut s'applique a tout hote non liste — pages personnelles, depots
-institutionnels.
+"""The default budget applies to any unlisted host — personal pages, institutional
+repositories.
 
-Releve de 200 a 600 par heure, soit une requete toutes les six secondes. Un serveur qui
-ne supporte pas une requete toutes les six secondes ne supporte pas non plus un lecteur
-humain qui parcourt un site. Le debit reste tres en dessous de ce qu'un navigateur
-ordinaire produit en chargeant une seule page moderne.
+Raised from 200 to 600 per hour, i.e. one request every six seconds. A server that cannot
+take one request every six seconds cannot take a human reader browsing a site either. The
+rate remains far below what an ordinary browser produces loading a single modern page.
 
-Ce qui change vraiment la duree d'une passe n'est pas ce chiffre, c'est l'execution
-concurrente entre hotes (`limiter.py`) : la file porte 2 230 hotes distincts, et rien
-n'obligeait a les servir l'un apres l'autre."""
+What really changes a pass's duration is not this figure, it is concurrent execution
+across hosts (`limiter.py`): the queue holds 2,230 distinct hosts, and nothing required
+serving them one after another."""
 
 MAX_WORKERS = 48
-"""Threads de sondage simultanes.
+"""Simultaneous probing threads.
 
-Le limiteur protege chaque hote independamment : un thread de plus ne fait jamais
-arriver deux requetes rapprochees chez le meme serveur. Ce que le parallelisme couvre,
-c'est la **latence** — un serveur lent, un delai d'attente de douze secondes.
+The limiter protects each host independently: an extra thread never makes two close
+requests reach the same server. What parallelism covers is **latency** — a slow server, a
+twelve-second timeout.
 
-Mesure du 2026-09-21 : a seize threads, 300 liens en 3 min 41, soit 1,4 par seconde.
-Le facteur limitant n'etait plus aucun hote mais le nombre de threads face a la latence.
-Avec 2 153 hotes distincts dans la file, quarante-huit connexions simultanees restent
-tres en dessous de ce qu'un navigateur ouvre en chargeant une page moderne, et aucune
-ne vise deux fois le meme serveur."""
+Measured on 2026-09-21: with sixteen threads, 300 links in 3 min 41 s, i.e. 1.4 per
+second. The limiting factor was no longer any host but the number of threads against
+latency. With 2,153 distinct hosts in the queue, forty-eight simultaneous connections stay
+far below what a browser opens loading a modern page, and none targets the same server
+twice."""
 
 
 SCHEMA = """
@@ -150,18 +147,18 @@ CREATE INDEX IF NOT EXISTS idx_links_host ON links(host);
 
 def connect(path: Path = DB_PATH) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
-    # check_same_thread=False : les ecritures viennent du pool de sondage, toujours
-    # sous le verrou `writes` de `run_pass`. SQLite n'est jamais touche sans lui.
+    # check_same_thread=False: writes come from the probing pool, always under the
+    # `writes` lock of `run_pass`. SQLite is never touched without it.
     conn = sqlite3.connect(path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
-    # WAL : une lecture (`status`) reste possible pendant qu'une passe ecrit.
+    # WAL: a read (`status`) remains possible while a pass is writing.
     conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=FULL")  # une sonde ecrite est une sonde survivante
+    conn.execute("PRAGMA synchronous=FULL")  # a written probe is a surviving probe
     conn.executescript(SCHEMA)
     return conn
 
 
-# --- Chargement ----------------------------------------------------------------------
+# --- Loading ---------------------------------------------------------------------------
 
 
 ARTIFACT_HOSTS_IN_REFS = {
@@ -174,16 +171,15 @@ ARTIFACT_HOSTS_IN_REFS = {
 
 
 ARTIFACT_KINDS = {"code_repo", "data_repo", "dataset_doi"}
-"""Un lien de bibliographie est conserve si son **type** est un artefact, meme quand son
-hote ne l'est pas.
+"""A bibliography link is kept if its **kind** is an artifact, even when its host is not.
 
-Corrige le 2026-09-21 apres audit : neuf DOI Zenodo cites en bibliographie
-(`https://doi.org/10.5281/zenodo.1070901`) etaient ecartes, parce que le filtre testait
-l'hote — `doi.org` — alors que c'est le prefixe du DOI qui designe un depot de donnees.
+Fixed on 2026-09-21 after an audit: nine Zenodo DOIs cited in bibliographies
+(`https://doi.org/10.5281/zenodo.1070901`) were discarded, because the filter tested the
+host — `doi.org` — whereas it is the DOI prefix that designates a data repository.
 
-C'est exactement le cas que metacheck a mesure (issue #411) et que l'on voulait garder :
-3 % des articles ne citent leur depot que dans leur bibliographie. Les perdre par un
-test sur le mauvais champ aurait ete une erreur silencieuse."""
+This is exactly the case metacheck measured (issue #411) and that we wanted to keep: 3%
+of papers cite their repository only in their bibliography. Losing them through a test on
+the wrong field would have been a silent error."""
 
 CITATION_HOSTS = {
     "pubmed.ncbi.nlm.nih.gov",
@@ -207,62 +203,61 @@ CITATION_HOSTS = {
     "linkinghub.elsevier.com",
     "mailto",
 }
-"""Infrastructures bibliographiques. Un lien PubMed dans un article est une citation, pas
-un artefact. Mesure du 2026-09-20 : 1 096 liens PubMed dans 400 articles, soit le second
-hote de la file. Les sonder mesurerait la survie des index bibliographiques — qui ne
-meurent pas — au prix de milliers de requetes chez le NIH.
+"""Bibliographic infrastructure. A PubMed link in a paper is a citation, not an artifact.
+Measured on 2026-09-20: 1,096 PubMed links in 400 papers, the second host in the queue.
+Probing them would measure the survival of bibliographic indexes — which do not die — at
+the cost of thousands of requests to the NIH.
 
-Les serveurs de prepublication (arXiv, bioRxiv, medRxiv, SSRN, HAL) y figurent aussi :
-un lien arXiv designe un **article**, pas un artefact de code ou de donnees. 556 liens
-arXiv dans 400 articles, presque tous des citations. Le projet mesure la survie des
-artefacts annonces, pas celle de la litterature.
+Preprint servers (arXiv, bioRxiv, medRxiv, SSRN, HAL) are listed too: an arXiv link
+designates a **paper**, not a code or data artifact. 556 arXiv links in 400 papers, almost
+all citations. The project measures the survival of announced artifacts, not of the
+literature.
 
-`mailto` y figure parce que les annotations de PDF contiennent les adresses des auteurs :
-ce ne sont pas des URL, et il n'est pas question de les toucher."""
+`mailto` is listed because PDF annotations contain the authors' addresses: they are not
+URLs, and touching them is out of the question."""
 
 DATA_PATHS_TO_KEEP = re.compile(
     r"(?i)/(nuccore|protein|sra|geo|bioproject|biosample|gds|clinvar|dbvar|gap|"
     r"genbank|assembly|taxonomy|gene|structure)\b"
 )
-"""Exception a `CITATION_HOSTS` : le NCBI heberge aussi de vraies donnees. Un lien vers
-`ncbi.nlm.nih.gov/nuccore/...` est un artefact, pas une citation.
+"""Exception to `CITATION_HOSTS`: NCBI also hosts real data. A link to
+`ncbi.nlm.nih.gov/nuccore/...` is an artifact, not a citation.
 
-`pmc` a ete **retire** de cette liste le 2026-09-21 : un lien PMC designe un article en
-texte integral, pas un jeu de donnees. C'est une citation."""
+`pmc` was **removed** from this list on 2026-09-21: a PMC link designates a full-text
+paper, not a dataset. It is a citation."""
 
 CITATION_PATHS = re.compile(
     r"(?i)(/pubmed(/|\?|$)|/entrez/query\.fcgi|/entrez/eutils|/articles/PMC\d+"
     r"|/pmc/articles/|/books/NBK\d+)"
 )
-"""Chemins de citation, quel que soit l'hote.
+"""Citation paths, whatever the host.
 
-Decouvert le 2026-09-21 en cherchant pourquoi le NCBI dominait la duree d'une passe :
-**576 des 655 liens NCBI etaient des citations PubMed** sous une forme d'URL que le
-filtre par hote ne voyait pas — `ncbi.nlm.nih.gov/pubmed/12345` et
-`ncbi.nlm.nih.gov/entrez/query.fcgi?db=PubMed&...`, et non
-`pubmed.ncbi.nlm.nih.gov/12345`.
+Discovered on 2026-09-21 while looking for why NCBI dominated a pass's duration: **576 of
+the 655 NCBI links were PubMed citations** in a URL form the host filter did not see —
+`ncbi.nlm.nih.gov/pubmed/12345` and `ncbi.nlm.nih.gov/entrez/query.fcgi?db=PubMed&...`,
+rather than `pubmed.ncbi.nlm.nih.gov/12345`.
 
-Le meme hote sert donc des citations et des donnees, et seule la forme du chemin les
-separe. Filtrer par hote seul laissait passer des centaines de requetes inutiles chez
-le NIH — et gonflait le denominateur du chiffre publie avec une population qui ne meurt
-pas."""
+The same host therefore serves citations and data, and only the shape of the path tells
+them apart. Filtering by host alone let through hundreds of useless requests to the NIH —
+and inflated the denominator of the published figure with a population that does not
+die."""
 
 
 def should_probe(row: dict) -> tuple[bool, str]:
-    """Faut-il sonder ce lien ?
+    """Should this link be probed?
 
-    Deux exclusions, toutes deux dictees par le §4 piege 5 autant que par le sens :
+    Two exclusions, both dictated by §4 pitfall 5 as much as by common sense:
 
-    * **« sur demande » n'est pas un lien** (piege 4). Jamais sonde, compte a part.
-    * **Un DOI d'article cite en bibliographie n'est pas un artefact de cet article.**
-      C'est une reference. Sur les 8 073 liens extraits de 400 articles, 1 756 viennent
-      de la bibliographie et l'ecrasante majorite sont des DOI d'articles cites. Les
-      sonder reviendrait a mesurer la survie de la litterature, pas celle des artefacts,
-      et a infliger des milliers de requetes inutiles a doi.org.
+    * **"on request" is not a link** (pitfall 4). Never probed, counted separately.
+    * **A paper DOI cited in the bibliography is not an artifact of this paper.** It is a
+      reference. Of the 8,073 links extracted from 400 papers, 1,756 come from the
+      bibliography and the vast majority are DOIs of cited papers. Probing them would
+      measure the survival of the literature, not of artifacts, and inflict thousands of
+      useless requests on doi.org.
 
-    Mais on **garde** les liens de bibliographie qui pointent vers un depot : c'est
-    exactement le cas mesure par metacheck (issue #411), ou 3 % des articles ne citent
-    leur depot que la. Les exclure en bloc perdrait ces cas.
+    But bibliography links pointing to a repository are **kept**: this is exactly the case
+    measured by metacheck (issue #411), where 3% of papers cite their repository only
+    there. Excluding them wholesale would lose those cases.
     """
     kind = row.get("kind")
     host = row.get("host") or ""
@@ -271,68 +266,67 @@ def should_probe(row: dict) -> tuple[bool, str]:
     if kind == "on_request":
         return False, "on_request"
     if not url.startswith(("http://", "https://")):
-        return False, "schema_non_http"
+        return False, "non_http_scheme"
     if row.get("malformed_at_source"):
-        # Piege 3 : casse des la publication, n'a donc jamais pu fonctionner. Compte a
-        # part comme mesure du controle editorial, jamais sonde — il n'y a rien a
-        # sonder, et le resultat serait indiscernable d'un lien mort.
+        # Pitfall 3: broken from publication, so it could never have worked. Counted
+        # separately as a measure of editorial control, never probed — there is nothing
+        # to probe, and the result would be indistinguishable from a dead link.
         return False, "malformed_at_source"
     if kind == "citation_doi":
         return False, "citation_doi"
     if host in CITATION_HOSTS and not DATA_PATHS_TO_KEEP.search(url):
-        return False, "hote_bibliographique"
+        return False, "citation_host"
     if CITATION_PATHS.search(url) and not DATA_PATHS_TO_KEEP.search(url):
-        return False, "chemin_bibliographique"
+        return False, "citation_path"
     if (
         row.get("source") == "references"
         and host not in ARTIFACT_HOSTS_IN_REFS
         and kind not in ARTIFACT_KINDS
     ):
-        return False, "reference_non_artefact"
+        return False, "non_artifact_reference"
     return True, "probe"
 
 
 CHROME_MIN_PAPERS = 4
 CHROME_MIN_DISCIPLINES = 2
 CHROME_MIN_PAPERS_SAME_DISCIPLINE = 8
+"""Threshold for the furniture of a single-discipline site.
+
+The first rule required two disciplines, and so let through the menu of a specialised
+journal: `frontiersin.org/Pharmacology/editorialboard`, `jstage.jst.go.jp/static/pages/...`
+recur in dozens of papers, all from the same discipline.
+
+Eight distinct papers is a deliberately high threshold: in a sample of 2,000 papers drawn
+at random over fifteen years, a dataset genuinely reused by eight of them would be
+remarkable. A journal footer gets there effortlessly."""
 FURNITURE_HOST_MIN_URLS = 20
 FURNITURE_HOST_MIN_URLS_PER_PAPER = 5.0
 FURNITURE_HOST_MAX_PAPERS = 50
-"""Garde-fou ajoute apres une premiere version trop large.
+"""Safeguard added after a first version that was too broad.
 
-Sans lui, la regle attrapait `doi.org` : douze mille URL distinctes, donc un ratio
-eleve — sauf qu'elles viennent de onze cents articles differents, chacun citant une
-douzaine de references. Ce n'est pas du mobilier, c'est un agregateur.
+Without it, the rule caught `doi.org`: twelve thousand distinct URLs, hence a high ratio —
+except they come from eleven hundred different papers, each citing a dozen references.
+That is not furniture, it is an aggregator.
 
-Le signal du mobilier n'est pas « beaucoup d'URL » mais **beaucoup d'URL venues de
-peu d'articles** : une poignee de bibliographies ou de menus, repliquee."""
-"""Seuil pour le mobilier d'un site mono-disciplinaire.
-
-La premiere regle exigeait deux disciplines, et laissait donc passer le menu d'une
-revue specialisee : `frontiersin.org/Pharmacology/editorialboard`,
-`jstage.jst.go.jp/static/pages/...` reviennent dans des dizaines d'articles, tous de la
-meme discipline.
-
-Huit articles distincts est un seuil deliberement haut : dans un echantillon de 2 000
-articles tires au hasard sur quinze ans, un jeu de donnees reellement reutilise par huit
-d'entre eux serait remarquable. Un pied de page de revue y arrive sans effort."""
+The furniture signal is not "many URLs" but **many URLs from few papers**: a handful of
+bibliographies or menus, replicated."""
 
 
 def find_site_furniture(rows: list[dict]) -> set[str]:
-    """URL qui reviennent dans beaucoup d'articles sans rapport entre eux.
+    """URLs that recur in many unrelated papers.
 
-    Une regle, pas une liste noire : **une URL citee par au moins quatre articles de
-    deux disciplines differentes, sur un hote qui n'est pas un depot d'artefacts, est du
-    mobilier de site.** Un jeu de donnees peut etre reutilise ; il ne l'est pas par de la
-    physique et de la sociologie a la fois, via un hote quelconque.
+    A rule, not a blocklist: **a URL cited by at least four papers from two different
+    disciplines, on a host that is not an artifact repository, is site furniture.** A
+    dataset can be reused; it is not reused by physics and sociology at once, through an
+    arbitrary host.
 
-    Mesure du 2026-09-21 : 88 URL, 871 liens, 11 % de la file. Ce qu'elle attrape :
-    `browsehappy.com` (« mettez a jour votre navigateur »), `home.cern`,
-    `commission.europa.eu`, `stats.uptimerobot.com` — la page de statut d'un service.
-    Aucun de ces liens n'est un artefact de recherche.
+    Measured on 2026-09-21: 88 URLs, 871 links, 11% of the queue. What it catches:
+    `browsehappy.com` ("please update your browser"), `home.cern`,
+    `commission.europa.eu`, `stats.uptimerobot.com` — a service's status page. None of
+    these links is a research artifact.
 
-    L'avantage d'une regle sur une liste noire est qu'elle continue de fonctionner sur
-    le prochain corpus, avec le mobilier d'autres sites que ceux deja rencontres.
+    The advantage of a rule over a blocklist is that it keeps working on the next corpus,
+    with the furniture of sites other than those already encountered.
     """
     from .extract.links import ARTIFACT_HOSTS
 
@@ -349,22 +343,22 @@ def find_site_furniture(rows: list[dict]) -> set[str]:
         host_urls[host].add(url)
         host_papers[host].add(paper)
 
-    # Regle par hote : combien d'URL distinctes un hote recoit-il par article ?
+    # Per-host rule: how many distinct URLs does a host receive per paper?
     #
-    # Mesure du 2026-09-21, et elle separe nettement deux populations :
+    # Measured on 2026-09-21, and it clearly separates two populations:
     #
-    #   github.com        50 URL / 110 articles = 0,5 URL par article
-    #   zenodo.org        15 URL /  11 articles = 1,4
-    #   frontiersin.org   96 URL /  17 articles = 5,6
-    #   jstage.jst.go.jp 118 URL /   7 articles = 16,9
-    #   inspirehep.net   398 URL /   8 articles = 49,8
+    #   github.com        50 URLs / 110 papers = 0.5 URL per paper
+    #   zenodo.org        15 URLs /  11 papers = 1.4
+    #   frontiersin.org   96 URLs /  17 papers = 5.6
+    #   jstage.jst.go.jp 118 URLs /   7 papers = 16.9
+    #   inspirehep.net   398 URLs /   8 papers = 49.8
     #
-    # Un depot d'artefacts recoit environ un lien par article : chaque equipe y depose
-    # sa chose. Un site dont on a aspire le menu ou l'appareil de references en donne
-    # des dizaines, tous venus d'une poignee d'articles.
+    # An artifact repository receives about one link per paper: each team deposits its
+    # thing there. A site whose menu or reference apparatus was scraped yields dozens,
+    # all from a handful of papers.
     #
-    # C'est une regle sur la **forme de la distribution**, pas sur des noms de domaine :
-    # elle vaudra encore sur un corpus ou l'on n'a jamais vu ces hotes-la.
+    # This is a rule on the **shape of the distribution**, not on domain names: it will
+    # still hold on a corpus where these hosts were never seen.
     furniture_hosts = {
         host
         for host, urls in host_urls.items()
@@ -387,7 +381,7 @@ def find_site_furniture(rows: list[dict]) -> set[str]:
 
 
 def load_links(conn: sqlite3.Connection, path: Path) -> dict[str, int]:
-    """Charge des liens dans la file. Idempotent : recharger n'efface aucune sonde."""
+    """Load links into the queue. Idempotent: reloading erases no probe."""
     now = datetime.now(UTC).isoformat()
     counts: collections.Counter[str] = collections.Counter()
     rows_all = [json.loads(line) for line in path.open(encoding="utf-8")]
@@ -396,7 +390,7 @@ def load_links(conn: sqlite3.Connection, path: Path) -> dict[str, int]:
     with conn:
         for row in rows_all:
             if row.get("normalized") in furniture:
-                counts["mobilier_de_site"] += 1
+                counts["site_furniture"] += 1
                 continue
             keep, why = should_probe(row)
             counts[why] += 1
@@ -417,7 +411,7 @@ def load_links(conn: sqlite3.Connection, path: Path) -> dict[str, int]:
     return dict(counts)
 
 
-# --- Selection de ce qui est du --------------------------------------------------------
+# --- Selecting what is due ---------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -429,17 +423,17 @@ class DueLink:
 
 
 def due(conn: sqlite3.Connection, settings: Settings, now: datetime | None = None) -> list[DueLink]:
-    """Liens a sonder maintenant.
+    """Links to probe now.
 
-    Un lien est du si :
-      * il n'a pas atteint trois sondes ;
-      * aucune sonde ne l'a trouve `alive` ou `restricted` (economie ci-dessus) ;
-      * sa derniere sonde date d'au moins `min_probe_span_days / 2`.
+    A link is due if:
+      * it has not reached three probes;
+      * no probe has found it `alive` or `restricted` (saving described above);
+      * its last probe is at least `min_probe_span_days / 2` old.
 
-    L'espacement est la moitie de la fenetre totale : trois sondes separees chacune de
-    cette duree donnent bien au moins `min_probe_span_days` entre la premiere et la
-    troisieme, ce qu'exige `resolve`. Le faire coincider exactement produirait des
-    passes qui n'arrivent jamais a satisfaire la regle.
+    The spacing is half the total window: three probes each separated by that duration
+    give at least `min_probe_span_days` between the first and the third, as `resolve`
+    requires. Making it coincide exactly would produce passes that never manage to
+    satisfy the rule.
     """
     now = now or datetime.now(UTC)
     gap = timedelta(days=settings.min_probe_span_days / 2)
@@ -478,14 +472,14 @@ def due(conn: sqlite3.Connection, settings: Settings, now: datetime | None = Non
 
 
 def _interleave_by_host(links: list[DueLink]) -> list[DueLink]:
-    """Alterne les hotes en tourniquet.
+    """Alternate hosts round-robin.
 
-    Sans cela, les 875 liens `ncbi.nlm.nih.gov` se suivent, et comme chaque requete
-    attend l'intervalle de debit de son hote, la passe dure la **somme** des temps par
-    hote. En alternant, on attend chez un hote pendant qu'on interroge les autres, et
-    la passe dure le **maximum** — de plusieurs jours a quelques heures.
+    Without this, the 875 `ncbi.nlm.nih.gov` links follow one another, and since each
+    request waits for its host's rate interval, the pass lasts the **sum** of per-host
+    times. By alternating, we wait at one host while querying the others, and the pass
+    lasts the **maximum** — from several days to a few hours.
 
-    Meme politesse, meme nombre de requetes, meme debit par hote. Seul l'ordre change.
+    Same politeness, same number of requests, same per-host rate. Only the order changes.
     """
     by_host: dict[str, list[DueLink]] = collections.defaultdict(list)
     for link in links:
@@ -504,7 +498,7 @@ def _interleave_by_host(links: list[DueLink]) -> list[DueLink]:
     return out
 
 
-# --- Budget --------------------------------------------------------------------------
+# --- Budget ----------------------------------------------------------------------------
 
 
 def budget_of(host: str) -> int:
@@ -512,8 +506,8 @@ def budget_of(host: str) -> int:
 
 
 def api_host_for(link_host: str) -> str:
-    """L'hote sonde n'est pas toujours l'hote du lien : un lien github.com frappe
-    api.github.com, et le budget doit porter sur celui qui recoit le trafic."""
+    """The probed host is not always the link's host: a github.com link hits
+    api.github.com, and the budget must apply to whoever receives the traffic."""
     return {
         "github.com": "api.github.com",
         "bitbucket.org": "api.bitbucket.org",
@@ -523,18 +517,18 @@ def api_host_for(link_host: str) -> str:
 
 
 def plan(links: list[DueLink]) -> dict:
-    """Ce qu'une passe ferait, hote par hote, et si elle tient dans les budgets.
+    """What a pass would do, host by host, and whether it fits within the budgets.
 
-    Un lien GitHub en 404 peut declencher jusqu'a trois requetes (depot, proprietaire,
-    Software Heritage). Le plan compte le **pire cas**, pas le cas moyen : un budget
-    calcule sur une moyenne est un budget depasse un jour sur deux.
+    A GitHub link returning 404 can trigger up to three requests (repository, owner,
+    Software Heritage). The plan counts the **worst case**, not the average case: a budget
+    computed on an average is a budget exceeded one day out of two.
     """
     per_host: collections.Counter[str] = collections.Counter()
     for link in links:
         host = api_host_for(link.host)
         per_host[host] += 1
         if host == "api.github.com":
-            per_host[host] += 1  # verification du proprietaire
+            per_host[host] += 1  # owner check
             per_host["archive.softwareheritage.org"] += 1
 
     hosts = []
@@ -554,7 +548,7 @@ def plan(links: list[DueLink]) -> dict:
     }
 
 
-# --- Execution -------------------------------------------------------------------------
+# --- Execution ---------------------------------------------------------------------------
 
 
 def run_pass(
@@ -564,21 +558,21 @@ def run_pass(
     dry_run: bool,
     limit: int | None = None,
 ) -> dict:
-    """Execute une passe. Reprenable : chaque sonde est ecrite des son retour.
+    """Run a pass. Resumable: each probe is written as soon as it returns.
 
-    En passe a blanc, tout le circuit est parcouru — selection, budget, ecriture,
-    resolution — **sauf l'appel reseau**. C'est ce qui rend le critere E4 verifiable
-    sans deranger un seul hebergeur.
+    In a dry run, the whole circuit is traversed — selection, budget, writing,
+    resolution — **except the network call**. That is what makes the E4 criterion
+    checkable without disturbing a single host.
     """
     links = due(conn, settings)
     if limit:
         links = links[:limit]
     estimate = plan(links)
 
-    # Deduplication par URL : deux articles qui citent le meme depot posent la meme
-    # question. La sonder deux fois le meme jour donne la meme reponse et double le
-    # trafic pour rien. Mesure du 2026-09-21 : 7 829 liens pour 6 763 URL distinctes,
-    # soit 14 % de requetes evitees — et 14 % de derangement en moins.
+    # Deduplication by URL: two papers citing the same repository ask the same question.
+    # Probing it twice on the same day gives the same answer and doubles the traffic for
+    # nothing. Measured on 2026-09-21: 7,829 links for 6,763 distinct URLs, i.e. 14% of
+    # requests avoided — and 14% less disturbance.
     by_url: dict[str, list[DueLink]] = collections.defaultdict(list)
     for item in links:
         by_url[item.payload["normalized"]].append(item)
@@ -629,8 +623,8 @@ def run_pass(
             n_probed += len(url_group)
 
         if not dry_run:
-            # Le meme resultat vaut pour tous les liens qui portent cette URL : c'est
-            # la meme ressource, sondee au meme instant, avec la meme preuve.
+            # The same result holds for every link carrying this URL: it is the same
+            # resource, probed at the same instant, with the same evidence.
             with writes:
                 for item in url_group:
                     _record(conn, item, status, method, reason, evidence)
@@ -664,9 +658,8 @@ def run_pass(
         "statuses": dict(statuses),
         "spent_per_host": dict(spent),
         "estimate": estimate,
-        # Le debit par hote est tenu par construction (le limiteur). Ce controle verifie
-        # qu'aucun lien n'a ete abandonne en silence : `n_probed` doit couvrir tout ce
-        # qui etait du.
+        # The per-host rate is held by construction (the limiter). This check verifies
+        # that no link was silently dropped: `n_probed` must cover everything that was due.
         "all_due_probed": n_probed == len(links),
     }
 
@@ -696,7 +689,7 @@ def _record(
         )
 
 
-# --- Etat ------------------------------------------------------------------------------
+# --- Status ------------------------------------------------------------------------------
 
 
 def status_report(conn: sqlite3.Connection, settings: Settings) -> dict:
@@ -750,13 +743,13 @@ def _probes_by_link(conn: sqlite3.Connection) -> dict[str, list[Probe]]:
     return out
 
 
-# --- CLI ---------------------------------------------------------------------------------
+# --- CLI -----------------------------------------------------------------------------------
 
 
 def main(argv: list[str] | None = None) -> int:
-    # Une console Windows est en cp1252 : un nom d'hote cyrillique ou chinois — il y en
-    # a dans le corpus — faisait tomber l'affichage avec UnicodeEncodeError, apres que
-    # le travail ait ete fait. Le rapport ne doit jamais etre ce qui casse un run.
+    # A Windows console uses cp1252: a Cyrillic or Chinese host name — there are some in
+    # the corpus — crashed the display with UnicodeEncodeError, after the work was done.
+    # The report must never be what breaks a run.
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="replace")
@@ -767,68 +760,68 @@ def main(argv: list[str] | None = None) -> int:
     try:
         settings = Settings.from_env()
     except ConfigError as exc:
-        print(f"erreur de configuration : {exc}", file=sys.stderr)
+        print(f"configuration error: {exc}", file=sys.stderr)
         return 2
 
     with closing(connect()) as conn:
         if command == "load":
             if len(args) < 2:
-                print("usage : load <links.jsonl>", file=sys.stderr)
+                print("usage: load <links.jsonl>", file=sys.stderr)
                 return 2
             counts = load_links(conn, Path(args[1]))
             total = conn.execute("SELECT COUNT(*) AS n FROM links").fetchone()["n"]
-            lues = sum(counts.values())
-            print(f"{lues} lignes lues, {total} liens distincts dans la file")
+            n_read = sum(counts.values())
+            print(f"{n_read} rows read, {total} distinct links in the queue")
             for why, n in sorted(counts.items(), key=lambda kv: -kv[1]):
                 if why != "probe":
-                    print(f"  ecartes — {why:<24} {n:>6}")
+                    print(f"  discarded — {why:<24} {n:>6}")
             return 0
 
         if command == "plan":
             estimate = plan(due(conn, settings))
-            print(f"liens dus maintenant : {estimate['n_links']}")
+            print(f"links due now: {estimate['n_links']}")
             for h in estimate["hosts"]:
-                flag = "  DEPASSE" if h["hours"] > 1 else ""
+                flag = "  OVER" if h["hours"] > 1 else ""
                 print(
                     f"  {h['host']:<32} {h['requests']:>6} req  "
                     f"budget {h['budget_per_hour']:>5}/h  ~{h['hours']:.2f} h{flag}"
                 )
-            print(f"duree estimee de la passe : {estimate['estimated_hours']} h")
-            # Un hote qui demande plus d'une heure n'est pas une erreur : c'est une
-            # duree. La passe s'etale, elle ne deborde pas.
+            print(f"estimated pass duration: {estimate['estimated_hours']} h")
+            # A host needing more than an hour is not an error: it is a duration. The
+            # pass spreads out, it does not overflow.
             return 0
 
         if command in ("dryrun", "run"):
             limit = int(args[1]) if len(args) > 1 else None
             report = run_pass(conn, settings, dry_run=(command == "dryrun"), limit=limit)
-            print(f"passe {report['pass_id']}")
-            print(f"  liens dus   : {report['n_due']}")
-            print(f"  sondes      : {report['n_probed']}")
-            print(f"  statuts     : {report['statuses']}")
-            couverture = "complete" if report["all_due_probed"] else "INCOMPLETE"
-            print(f"  couverture  : {couverture} ({report['n_probed']}/{report['n_due']})")
+            print(f"pass {report['pass_id']}")
+            print(f"  links due  : {report['n_due']}")
+            print(f"  probed     : {report['n_probed']}")
+            print(f"  statuses   : {report['statuses']}")
+            coverage = "complete" if report["all_due_probed"] else "INCOMPLETE"
+            print(f"  coverage   : {coverage} ({report['n_probed']}/{report['n_due']})")
             print(
-                f"  requetes    : {report['n_requests']} pour {report['n_due']} liens "
-                f"({report['n_distinct_urls']} URL distinctes)"
+                f"  requests   : {report['n_requests']} for {report['n_due']} links "
+                f"({report['n_distinct_urls']} distinct URLs)"
             )
-            print(f"  duree estimee : {report['estimate']['estimated_hours']} h")
+            print(f"  estimated duration: {report['estimate']['estimated_hours']} h")
             for host, n in sorted(report["spent_per_host"].items(), key=lambda kv: -kv[1])[:10]:
-                print(f"      {host:<32} {n:>6} req, debit {budget_of(host)}/h")
+                print(f"      {host:<32} {n:>6} req, rate {budget_of(host)}/h")
             return 0 if report["all_due_probed"] else 1
 
         if command == "status":
             report = status_report(conn, settings)
-            print(f"file : {report['n_links']} liens")
-            print(f"  dus maintenant        : {report['n_due_now']}")
-            print(f"  par nombre de sondes  : {report['links_by_probe_count']}")
-            print(f"  statuts resolus       : {report['resolved']}")
+            print(f"queue: {report['n_links']} links")
+            print(f"  due now              : {report['n_due_now']}")
+            print(f"  by number of probes  : {report['links_by_probe_count']}")
+            print(f"  resolved statuses    : {report['resolved']}")
             for p in report["recent_passes"]:
-                kind = "blanc" if p["dry_run"] else "reelle"
-                end = p["finished_at"] or "en cours"
-                print(f"  passe {p['pass_id']} ({kind}) {p['n_probed']} sondes, fin {end}")
+                kind = "dry" if p["dry_run"] else "real"
+                end = p["finished_at"] or "running"
+                print(f"  pass {p['pass_id']} ({kind}) {p['n_probed']} probes, finished {end}")
             return 0
 
-        print(f"commande inconnue : {command!r} (load | plan | dryrun | run | status)", file=sys.stderr)
+        print(f"unknown command: {command!r} (load | plan | dryrun | run | status)", file=sys.stderr)
         return 2
 
 

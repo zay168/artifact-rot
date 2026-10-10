@@ -1,18 +1,16 @@
-"""Sonde HTTP generique — le filet de securite, pas le choix par defaut.
+"""Generic HTTP prober — the safety net, not the default choice.
 
-Elle ne sert que pour les hotes sans API : pages personnelles, depots institutionnels,
-serveurs de laboratoire. C'est la que le piege 1 du §4 mord le plus fort, parce qu'un
-`200` ne veut rien dire.
+It is only used for hosts without an API: personal pages, institutional repositories,
+lab servers. This is where §4 pitfall 1 bites hardest, because a `200` means nothing.
 
-**Detection de soft-404 par sonde de controle**, technique classique et entierement
-deterministe, sans aucune annotation humaine : on demande au meme hote une URL
-volontairement inexistante, et on compare sa reponse a celle de l'URL cible. Si le
-serveur repond la meme chose aux deux, son `200` ne porte aucune information et la
-cible est declaree morte.
+**Soft-404 detection by control probe**, a classic and fully deterministic technique,
+with no human annotation: we ask the same host for a deliberately non-existent URL, and
+compare its response with the target URL's. If the server answers the same to both, its
+`200` carries no information and the target is declared dead.
 
-Le `403` est traite avec prudence : un pare-feu applicatif qui bloque un robot est un
-echec du crawler (`unknown`), pas un acces controle (`restricted`) ni une disparition.
-Les confondre serait exactement la falsification que le §4 interdit.
+`403` is handled with care: a web application firewall blocking a robot is a crawler
+failure (`unknown`), not controlled access (`restricted`) nor a disappearance. Confusing
+them would be exactly the falsification §4 forbids.
 """
 
 from __future__ import annotations
@@ -31,8 +29,9 @@ from .base import Prober, ProbeResult, truncate_body
 from .dns import resolve as resolve_host
 
 SOFT404_SIMILARITY = 0.90
-"""Au-dela, la reponse de la cible est jugee indiscernable de celle d'une URL
-inexistante. Seuil fixe avant le premier run et valide par le jeu de controle E2."""
+"""Above this, the target's response is deemed indistinguishable from that of a
+non-existent URL. Threshold fixed before the first run and validated by the E2 control
+set."""
 
 _WAF_MARKERS = re.compile(
     r"(cloudflare|just a moment|checking your browser|attention required|akamai|"
@@ -58,9 +57,9 @@ class GenericHTTPProber(Prober):
         url = link.normalized
         ev: dict = {"url": url}
 
-        # Resolution du nom avant toute requete. Un nom qui n'existe pas rend une
-        # reponse — celle du DNS — et non un echec du crawler. Voir `probe/dns.py`
-        # pour la decision et ses garde-fous.
+        # Name resolution before any request. A name that does not exist yields an
+        # answer — the DNS's — and not a crawler failure. See `probe/dns.py` for the
+        # decision and its safeguards.
         verdict = resolve_host(link.host)
         ev["dns"] = verdict
         if verdict == "nxdomain":
@@ -72,7 +71,7 @@ class GenericHTTPProber(Prober):
             allowed = _robots_allows(client, url, settings)
             ev["robots_allowed"] = allowed
             if allowed is False:
-                # Interdit de sonder : on ne sait rien, et on ne passe pas outre (§4 piege 5).
+                # Probing forbidden: we know nothing, and we do not override (§4 pitfall 5).
                 return ProbeResult(Status.UNKNOWN, "http", "robots_disallowed", ev)
 
         r = client.get(url)
@@ -90,7 +89,7 @@ class GenericHTTPProber(Prober):
         if r.status_code in (401, 403):
             ev["body"] = body
             if _WAF_MARKERS.search(body) or r.status_code == 403 and not _looks_like_auth(r, body):
-                # Blocage anti-robot probable : echec du crawler, statut indetermine.
+                # Likely anti-robot blocking: crawler failure, status undetermined.
                 return ProbeResult(Status.UNKNOWN, "http", "http_blocked_by_waf", ev)
             return ProbeResult(Status.RESTRICTED, "http", f"http_{r.status_code}_auth", ev)
 
@@ -98,7 +97,7 @@ class GenericHTTPProber(Prober):
             ev["body"] = body
             return ProbeResult(Status.UNKNOWN, "http", f"http_{r.status_code}", ev)
 
-        # 200 — c'est ici que le code ment. Trois tests, du moins couteux au plus couteux.
+        # 200 — this is where the code lies. Three tests, from cheapest to most expensive.
         if _redirected_to_root(url, str(r.url)):
             ev["soft404_signal"] = "redirect_to_root"
             return ProbeResult(Status.DEAD, "http", "soft404_redirect_to_root", ev)
@@ -115,7 +114,7 @@ class GenericHTTPProber(Prober):
             return ProbeResult(Status.UNKNOWN, "http", "control_probe_failed", ev)
 
         if control["status"] in (404, 410):
-            # Le serveur sait dire non : son 200 est credible.
+            # The server can say no: its 200 is credible.
             return ProbeResult(Status.ALIVE, "http", "http_200_control_404", ev)
 
         similarity = _similarity(body, control.get("body", ""))
@@ -133,8 +132,8 @@ def _looks_like_auth(response: httpx.Response, body: str) -> bool:
 
 
 def _redirected_to_root(original: str, final: str) -> bool:
-    """Une redirection d'une ressource precise vers la racine du site est un soft-404
-    classique : le serveur ne sait plus ou est la ressource et renvoie l'accueil."""
+    """A redirect from a specific resource to the site root is a classic soft-404: the
+    server no longer knows where the resource is and sends the home page."""
     o, f = urlsplit(original), urlsplit(final)
     return bool(o.path.strip("/")) and f.path.strip("/") == "" and o.netloc == f.netloc
 
@@ -145,10 +144,10 @@ def _title_of(body: str) -> str | None:
 
 
 def _control_probe(client: httpx.Client, url: str, settings: Settings) -> dict:
-    """Demande une URL garantie inexistante sur le meme hote, dans le meme repertoire.
+    """Request a URL guaranteed not to exist on the same host, in the same directory.
 
-    Le chemin porte un UUID et le nom du projet : si quelqu'un lit ses journaux, il voit
-    immediatement qui frappe et pourquoi."""
+    The path carries a UUID and the project name: anyone reading their logs immediately
+    sees who is knocking and why."""
     parts = urlsplit(url)
     parent = parts.path.rsplit("/", 1)[0]
     token = uuid.uuid4().hex
@@ -167,10 +166,10 @@ def _control_probe(client: httpx.Client, url: str, settings: Settings) -> dict:
 
 
 def _similarity(a: str, b: str) -> float:
-    """Similarite structurelle entre deux reponses, apres retrait du bruit variable.
+    """Structural similarity between two responses, after removing variable noise.
 
-    On enleve chiffres, UUID et espaces : deux pages d'erreur identiques ne different
-    souvent que par un horodatage ou un identifiant de requete."""
+    Digits, UUIDs and whitespace are stripped: two identical error pages often differ
+    only by a timestamp or a request identifier."""
     norm = lambda s: re.sub(r"[\d\s]+", "", re.sub(r"[0-9a-f]{8,}", "", s.lower()))
     na, nb = norm(a), norm(b)
     if not na and not nb:
@@ -193,7 +192,7 @@ def _robots_allows(client: httpx.Client, url: str, settings: Settings) -> bool |
             if r.status_code == 200:
                 parser.parse(r.text.splitlines())
             else:
-                parser.parse([])  # pas de robots.txt = tout autorise
+                parser.parse([])  # no robots.txt = everything allowed
         except httpx.HTTPError:
             _ROBOTS_CACHE[origin] = None
             return None

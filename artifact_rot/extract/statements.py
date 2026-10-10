@@ -1,19 +1,18 @@
-"""Reperage des sections de disponibilite, et de la bibliographie.
+"""Locating availability sections, and the bibliography.
 
-Deux usages, tous deux exiges par le §4 :
+Two uses, both required by §4:
 
-* **Localiser les declarations de disponibilite** pour savoir d'ou vient un lien. Un
-  lien annonce dans « Data Availability » est une promesse explicite ; le meme lien dans
-  une note de bas de page n'en est pas une. Les deux sont extraits, la provenance les
-  separe.
-* **Localiser la bibliographie**, parce que metacheck a mesure que 3 % des articles de
-  son corpus ne citent un depot que la (issue #411). Les exclure perd ces cas ; les
-  inclure sans les marquer attribue a un article le depot d'un article qu'il cite. On
-  extrait, on marque, et le rapport tranche.
+* **Locate availability statements** to know where a link comes from. A link announced in
+  "Data Availability" is an explicit promise; the same link in a footnote is not. Both are
+  extracted; provenance separates them.
+* **Locate the bibliography**, because metacheck measured that 3% of the papers in its
+  corpus cite a repository only there (issue #411). Excluding them loses these cases;
+  including them unmarked attributes to a paper the repository of a paper it cites. We
+  extract, we mark, and the report decides.
 
-Volontairement heuristique et deterministe : pas de modele, pas d'apprentissage, aucun
-seuil ajuste apres coup. Une regle qu'on ne peut pas ecrire en une phrase n'a pas sa
-place dans un projet dont le livrable est la rigueur.
+Deliberately heuristic and deterministic: no model, no learning, no threshold tuned after
+the fact. A rule that cannot be written in one sentence has no place in a project whose
+deliverable is rigour.
 """
 
 from __future__ import annotations
@@ -45,23 +44,22 @@ INLINE_AVAILABILITY = re.compile(
     r"""(?ix)
     (?:data|code|software|materials?)\s+availability(?:\s+statement)?
     (?:
-        \s*[:.\-—]          # ponctuation explicite apres le titre
-      # Ou rien du tout : le titre enchaine directement sur la phrase. La majuscule
-      # qui suit est ce qui distingue un titre d'une mention ordinaire, d'ou le
-      # `(?-i:...)` qui desactive localement l'insensibilite a la casse — sans lui,
-      # `re.IGNORECASE` rend `[A-Z]` equivalent a `[A-Za-z]` et « we discuss data
-      # availability in section 4 » passe pour un titre de section.
+        \s*[:.\-—]          # explicit punctuation after the heading
+      # Or nothing at all: the heading runs straight into the sentence. The capital
+      # letter that follows is what distinguishes a heading from an ordinary mention,
+      # hence the `(?-i:...)` that locally disables case insensitivity — without it,
+      # `re.IGNORECASE` makes `[A-Z]` equivalent to `[A-Za-z]` and "we discuss data
+      # availability in section 4" passes for a section heading.
       | \s+(?=(?-i:[A-Z]))
     )
     """
 )
-"""Forme en ligne du titre.
+"""Inline form of the heading.
 
-La variante « sans ponctuation » a ete ajoutee le 2026-09-20 apres mesure : sur dix
-documents contenant la formule, quatre l'ecrivaient sans separateur, du type
-« Data Availability As declared in the paper that research data will be provided upon
-receiving requests ». L'extraction PDF colle le titre au paragraphe, et exiger un
-deux-points perdait 40 % des cas."""
+The "no punctuation" variant was added on 2026-09-20 after measurement: of ten documents
+containing the phrase, four wrote it without a separator, as in "Data Availability As
+declared in the paper that research data will be provided upon receiving requests". PDF
+extraction glues the heading to the paragraph, and requiring a colon lost 40% of cases."""
 
 REFERENCE_HEADINGS = re.compile(
     r"""(?mix)
@@ -87,9 +85,8 @@ NEXT_HEADING = re.compile(
 )
 
 MAX_STATEMENT_CHARS = 3000
-"""Une declaration de disponibilite plus longue que ca n'en est pas une : on est tombe
-sur une section mal delimitee, et etendre la fenetre ferait entrer des liens qui ne
-sont pas des promesses."""
+"""An availability statement longer than this is not one: we have hit a badly delimited
+section, and widening the window would bring in links that are not promises."""
 
 
 @dataclass(frozen=True)
@@ -103,7 +100,7 @@ class Span:
 
 
 def find_availability_spans(text: str) -> list[Span]:
-    """Toutes les declarations de disponibilite, bornees a la section suivante."""
+    """Every availability statement, bounded by the next section."""
     spans: list[Span] = []
 
     for m in AVAILABILITY_HEADINGS.finditer(text):
@@ -111,8 +108,8 @@ def find_availability_spans(text: str) -> list[Span]:
         spans.append(Span("availability", start, _section_end(text, start)))
 
     for m in INLINE_AVAILABILITY.finditer(text):
-        # Forme en ligne, frequente dans les PDF ou le titre de section n'est pas isole
-        # sur sa ligne. Bornee au paragraphe.
+        # Inline form, common in PDFs where the section heading is not alone on its line.
+        # Bounded by the paragraph.
         start = m.end()
         para = text.find("\n\n", start)
         end = para if para != -1 else start + MAX_STATEMENT_CHARS
@@ -128,11 +125,11 @@ def _section_end(text: str, start: int) -> int:
 
 
 def find_references_span(text: str) -> Span | None:
-    """La bibliographie : **la derniere** occurrence du titre, pas la premiere.
+    """The bibliography: **the last** occurrence of the heading, not the first.
 
-    Un article mentionne souvent « References » dans son sommaire ou dans une legende
-    avant la vraie section. Prendre la premiere occurrence classerait la moitie du corps
-    de texte en bibliographie, et donc en provenance douteuse.
+    A paper often mentions "References" in its table of contents or in a caption before
+    the real section. Taking the first occurrence would class half the body text as
+    bibliography, and thus as doubtful provenance.
     """
     matches = list(REFERENCE_HEADINGS.finditer(text))
     if not matches:
@@ -155,7 +152,7 @@ def _merge(spans: list[Span]) -> list[Span]:
 
 
 def classify_position(pos: int, availability: list[Span], references: Span | None) -> str:
-    """D'ou vient un lien trouve a la position `pos` ? Voir `models.LinkSource`."""
+    """Where does a link found at position `pos` come from? See `models.LinkSource`."""
     for span in availability:
         if span.start <= pos < span.end:
             return "availability_statement"

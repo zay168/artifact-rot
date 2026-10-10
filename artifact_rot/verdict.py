@@ -1,14 +1,17 @@
-"""E6 — applique `survival.verdict_h1` a l'etat courant de la file.
+"""E6 — applies `survival.verdict_h1` to the current state of the queue.
 
-Ne contient aucune decision statistique : elles sont toutes dans `survival.py`, ecrit le
-2026-09-21 avant les passes 2 et 3. Ce module ne fait que compter et appeler.
+Contains no statistical decision: they are all in `survival.py`, written on 2026-09-21
+before passes 2 and 3. This module only counts and calls.
 
-Deux perimetres (docs/prolongation.md §4.1) :
-  * `artefacts` — code_repo, data_repo, dataset_doi. Analyse principale depuis le 2026-10-04.
-  * `tout`      — tous les liens, y compris les URL generiques. Publie a part.
+Two scopes (docs/extension.md §4.1):
+  * `artifacts` — code_repo, data_repo, dataset_doi. Main analysis since 2026-10-04.
+  * `all`       — every link, generic URLs included. Published separately.
 
-Usage :
-    ARTIFACT_ROT_CONTACT="vous@exemple.org" python -m artifact_rot.verdict artefacts
+The French scope names used before the translation (`artefacts`, `tout`) are still
+accepted, so that commands written down earlier keep working.
+
+Usage:
+    ARTIFACT_ROT_CONTACT="you@example.org" python -m artifact_rot.verdict artifacts
 """
 
 from __future__ import annotations
@@ -28,19 +31,21 @@ from .schedule import _probes_by_link, connect
 from .survival import AgePoint, StratumCounts, survival_curve, verdict_h1
 
 OBSERVATION_YEAR = 2026
-SCOPES = ("artefacts", "tout")
+SCOPES = ("artifacts", "all")
+SCOPE_ALIASES = {"artefacts": "artifacts", "tout": "all"}
 
 
 def in_scope(payload: dict, scope: str) -> bool:
-    return scope == "tout" or payload["kind"] in ARTIFACT_KINDS
+    scope = SCOPE_ALIASES.get(scope, scope)
+    return scope == "all" or payload["kind"] in ARTIFACT_KINDS
 
 
 def count(
     payloads: dict[str, dict], probes: dict, settings: Settings, scope: str, key: str
 ) -> dict:
-    """Comptes des quatre etats, par valeur de `key` (paper_year, discipline, kind…).
+    """Counts of the four states, by value of `key` (paper_year, discipline, kind…).
 
-    Un lien jamais sonde n'est compte nulle part : il n'a pas d'etat.
+    A link never probed is counted nowhere: it has no state.
     """
     out: dict = collections.defaultdict(StratumCounts)
     for link_id, payload in payloads.items():
@@ -80,14 +85,14 @@ def analyse(conn, settings: Settings, scope: str) -> dict:
 def main(argv: list[str] | None = None) -> int:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     args = list(sys.argv[1:] if argv is None else argv)
-    scope = args[0] if args else "artefacts"
+    scope = SCOPE_ALIASES.get(args[0], args[0]) if args else "artifacts"
     if scope not in SCOPES:
-        print(f"perimetre inconnu : {scope!r} ({' | '.join(SCOPES)})", file=sys.stderr)
+        print(f"unknown scope: {scope!r} ({' | '.join(SCOPES)})", file=sys.stderr)
         return 2
     try:
         settings = Settings.from_env()
     except ConfigError as exc:
-        print(f"erreur de configuration : {exc}", file=sys.stderr)
+        print(f"configuration error: {exc}", file=sys.stderr)
         return 2
 
     with closing(connect()) as conn:
@@ -97,16 +102,16 @@ def main(argv: list[str] | None = None) -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
 
-    print(f"perimetre : {scope}")
+    print(f"scope: {scope}")
     for year, c in report["by_paper_year"].items():
         print(f"  {year}  {c}")
     for policy in ("alive", "exclude"):
         block = report[f"restricted_{policy}"]
-        print(f"restricted={policy} : verdict {block['h1']['verdict']}")
+        print(f"restricted={policy}: verdict {block['h1']['verdict']}")
         for reason in block["h1"]["reasons"]:
             print(f"   - {reason}")
-        print(f"   unknown {block['h1']['unknown_rate']:.1%}, demi-vie {block['half_life_years']}")
-    print(f"rapport : {out}")
+        print(f"   unknown {block['h1']['unknown_rate']:.1%}, half-life {block['half_life_years']}")
+    print(f"report: {out}")
     return 0
 
 

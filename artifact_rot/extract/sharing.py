@@ -1,29 +1,28 @@
-"""Detection des declarations de partage de donnees et de code.
+"""Detecting data- and code-sharing statements.
 
-**Methode reprise d'ODDPub** (Riedel, Kip & Bobrov, *ODDPub — a Text-Mining Algorithm to
+**Method taken from ODDPub** (Riedel, Kip & Bobrov, *ODDPub — a Text-Mining Algorithm to
 Detect Data Sharing in Biomedical Publications*, Data Science Journal, 2020,
-https://doi.org/10.5334/dsj-2020-042). L'article est sous **CC BY 4.0**, donc la methode
-et sa structure de categories se reprennent avec attribution.
+https://doi.org/10.5334/dsj-2020-042). The paper is under **CC BY 4.0**, so the method
+and its category structure can be reused with attribution.
 
-Le paquet ODDPub lui-meme est en **R et sous AGPL-3.0** : son code n'est pas reutilisable
-dans une pile Python sans contaminer la licence. Comme pour `metacheck`, on reprend la
-**methode publiee**, pas le code — et on le dit.
+The ODDPub package itself is in **R and under AGPL-3.0**: its code cannot be reused in a
+Python stack without contaminating the licence. As with `metacheck`, we reuse the
+**published method**, not the code — and we say so.
 
-Ce qui est repris : l'idee qu'une declaration de partage se detecte par **co-occurrence
-de categories de mots-cles** dans une meme phrase, et le decoupage en categories
-(depot specialise + numero d'acces, depot generaliste, materiel supplementaire, code
-source). Ce qui est propre a ce depot : les listes elles-memes, reecrites pour couvrir
-quatre disciplines et pas seulement la biomedecine, et l'articulation avec les quatre
-etats du §4.
+What is reused: the idea that a sharing statement is detected by **co-occurrence of
+keyword categories** within the same sentence, and the split into categories (specialised
+repository + accession number, general-purpose repository, supplementary material, source
+code). What is specific to this repository: the lists themselves, rewritten to cover four
+disciplines and not only biomedicine, and the link with the four states of §4.
 
-Performances rapportees par les auteurs sur leur corpus biomedical, a titre de repere et
-non de promesse sur le notre : sensibilite 0,73 / specificite 0,97 pour les donnees
-ouvertes ; sensibilite 0,94 / specificite 0,82 pour le code ouvert.
+Performance reported by the authors on their biomedical corpus, as a reference point and
+not a promise about ours: sensitivity 0.73 / specificity 0.97 for open data; sensitivity
+0.94 / specificity 0.82 for open code.
 
-**Ce que ce module ne fait pas** : il ne dit pas si un lien resout. Il dit si l'article
-*annonce* un partage. Le croisement des deux est le vrai resultat du projet — « X % des
-articles annoncent partager ; parmi eux, Y % ont un lien qui resout encore » est une
-phrase bien plus forte qu'un taux de liens morts seul.
+**What this module does not do**: it does not say whether a link resolves. It says whether
+the paper *announces* sharing. Crossing the two is the project's real result — "X% of
+papers announce sharing; among them, Y% have a link that still resolves" is a much
+stronger sentence than a dead-link rate alone.
 """
 
 from __future__ import annotations
@@ -31,9 +30,9 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-# --- Categorie 1 : depots specialises, reconnaissables a leur numero d'acces --------
-# La co-occurrence « nom du depot » + « numero d'acces » est le signal le plus sur qui
-# existe : un numero d'acces ne s'ecrit pas par hasard.
+# --- Category 1: specialised repositories, recognisable by their accession number ----
+# The co-occurrence "repository name" + "accession number" is the most reliable signal
+# there is: an accession number is not written by chance.
 
 FIELD_REPOS = re.compile(
     r"""(?ix)\b(
@@ -62,13 +61,13 @@ ACCESSION = re.compile(
     )\b
     """
 )
-"""Motifs d'identifiants **specifiques a un depot nomme**, rien d'autre.
+"""Identifier patterns **specific to a named repository**, nothing else.
 
-Deux motifs generiques ont ete retires apres mesure le 2026-09-20 : `[A-Z]{1,2}\\d{5,}`
-et `\\d[A-Z0-9]{3}` (la forme d'un code PDB). Ils declenchaient sur des numeros de
-reference bibliographique et faisaient passer une liste de citations pour une
-declaration de partage. Un motif si court n'a de sens qu'a cote du nom de son depot,
-jamais seul — et la co-occurrence exigee ici ne suffisait pas a le rattraper."""
+Two generic patterns were removed after measurement on 2026-09-20: `[A-Z]{1,2}\\d{5,}`
+and `\\d[A-Z0-9]{3}` (the shape of a PDB code). They fired on bibliographic reference
+numbers and made a citation list look like a sharing statement. A pattern this short only
+makes sense next to the name of its repository, never alone — and the co-occurrence
+required here was not enough to catch it."""
 
 ACCESSION_WORDS = re.compile(
     r"""(?ix)\b(accession\s+(?:number|code|no\.?|id)s?
@@ -76,7 +75,7 @@ ACCESSION_WORDS = re.compile(
       | study\s+identifier)\b"""
 )
 
-# --- Categorie 2 : depots generalistes ----------------------------------------------
+# --- Category 2: general-purpose repositories ---------------------------------------
 
 GENERAL_REPOS = re.compile(
     r"""(?ix)\b(
@@ -100,7 +99,7 @@ DEPOSIT_VERBS = re.compile(
     )\b"""
 )
 
-# --- Categorie 3 : materiel supplementaire -------------------------------------------
+# --- Category 3: supplementary material ----------------------------------------------
 
 SUPPLEMENT = re.compile(
     r"""(?ix)\b(
@@ -119,7 +118,7 @@ DATA_FORMATS = re.compile(
     )"""
 )
 
-# --- Categorie 4 : code source --------------------------------------------------------
+# --- Category 4: source code ----------------------------------------------------------
 
 CODE_WORDS = re.compile(
     r"""(?ix)\b(
@@ -132,7 +131,7 @@ CODE_WORDS = re.compile(
     )\b"""
 )
 
-# --- Contre-indications ---------------------------------------------------------------
+# --- Counter-indications --------------------------------------------------------------
 
 RESTRICTED_WORDS = re.compile(
     r"""(?ix)\b(
@@ -143,20 +142,20 @@ RESTRICTED_WORDS = re.compile(
       | material\s+transfer\s+agreement
     )\b"""
 )
-"""Un article peut annoncer explicitement qu'il **ne** partage pas, pour des raisons
-souvent legitimes (donnees de patients). Le compter comme un partage serait faux, et le
-compter comme un lien mort serait pire.
+"""A paper may state explicitly that it does **not** share, often for legitimate reasons
+(patient data). Counting it as sharing would be wrong, and counting it as a dead link
+would be worse.
 
-Resserre le 2026-09-20 : la forme large `(not|no)\\s+...\\s+available` declenchait sur
-« these symmetries are not generally available in curved space time », une phrase de
-physique theorique sans aucun rapport. Le sujet doit maintenant etre les donnees."""
+Tightened on 2026-09-20: the broad form `(not|no)\\s+...\\s+available` fired on "these
+symmetries are not generally available in curved space time", a theoretical-physics
+sentence with no connection at all. The subject must now be the data."""
 
 SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+|\n{2,}")
 
 
 @dataclass
 class SharingSignals:
-    """Ce que l'article **annonce**. Jamais ce qui resout."""
+    """What the paper **announces**. Never what resolves."""
 
     open_data: bool = False
     open_code: bool = False
@@ -165,8 +164,8 @@ class SharingSignals:
     on_request: bool = False
     categories: list[str] = field(default_factory=list)
     sentences: list[str] = field(default_factory=list)
-    """Les phrases qui ont declenche la detection. Sans elles, un desaccord sur un
-    chiffre publie est inarbitrable — meme exigence que pour les preuves de sondes."""
+    """The sentences that triggered detection. Without them, a disagreement over a
+    published figure cannot be arbitrated — same requirement as for probe evidence."""
 
     @property
     def claims_sharing(self) -> bool:
@@ -174,11 +173,11 @@ class SharingSignals:
 
 
 def detect(text: str, *, max_sentences: int = 12) -> SharingSignals:
-    """Detecte les annonces de partage par co-occurrence de categories dans une phrase.
+    """Detect sharing announcements by co-occurrence of categories within a sentence.
 
-    Le principe d'ODDPub : une seule categorie ne suffit pas. « github » dans une
-    bibliographie n'annonce rien ; « the analysis code is available at github.com/… »
-    annonce. C'est la co-occurrence dans **la meme phrase** qui porte le signal.
+    ODDPub's principle: a single category is not enough. "github" in a bibliography
+    announces nothing; "the analysis code is available at github.com/…" does. It is
+    co-occurrence within **the same sentence** that carries the signal.
     """
     from .normalize import is_on_request, repair_spaced_hosts
 

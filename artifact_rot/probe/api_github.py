@@ -1,17 +1,18 @@
-"""Sonde GitHub / GitLab / Bitbucket : API uniquement, jamais le HTML.
+"""GitHub / GitLab / Bitbucket prober: API only, never the HTML.
 
-Limite structurelle, assumee et reportee dans le rapport (§9) : l'API GitHub renvoie
-**404 pour un depot supprime comme pour un depot passe en prive**. Aucun appel public
-ne distingue les deux. On classe donc `dead` en portant dans la preuve le drapeau
-`indistinguishable_private_or_deleted`, et `probe/api_swh.py` permet de savoir
-a posteriori si le depot a existe publiquement (Software Heritage l'aurait archive).
+Structural limitation, accepted and stated in the report (§9): the GitHub API returns
+**404 for a deleted repository as well as for one made private**. No public call tells
+the two apart. We therefore classify `dead` while carrying the
+`indistinguishable_private_or_deleted` flag in the evidence, and `probe/api_swh.py` lets
+us know after the fact whether the repository existed publicly (Software Heritage would
+have archived it).
 
-Un depot `archived` ou `disabled` reste `alive` : il resout, on peut le lire. C'est la
-resolution qu'on mesure, pas la sante du projet.
+An `archived` or `disabled` repository stays `alive`: it resolves, it can be read. We
+measure resolution, not project health.
 
-Portee : on sonde l'existence du **depot**, pas celle d'un fichier ou d'un commit
-particulier a l'interieur. Un lien vers `…/blob/main/data.csv` est compte vivant si le
-depot vit. Choix conservateur, ecrit dans les limites du rapport.
+Scope: we probe the existence of the **repository**, not of a particular file or commit
+inside it. A link to `…/blob/main/data.csv` counts as alive if the repository lives. A
+conservative choice, written into the report's limitations.
 """
 
 from __future__ import annotations
@@ -44,9 +45,9 @@ class GitHubProber(Prober):
 
         url = f"https://api.github.com/repos/{owner}/{repo}"
 
-        # Garde de quota : on ne frappe pas une API dont on sait qu'elle va refuser.
-        # Bruler le reste du quota en 403 est incorrect envers l'hebergeur et ne produit
-        # que des `unknown` (§4, piege 5).
+        # Quota guard: we do not hit an API we know will refuse. Burning the rest of the
+        # quota on 403s is impolite to the host and only produces `unknown` (§4,
+        # pitfall 5).
         if _QUOTA.exhausted():
             return self._unknown("github_quota_guard", api_url=url, **_QUOTA.snapshot())
 
@@ -69,10 +70,10 @@ class GitHubProber(Prober):
             if settings.github_owner_check:
                 ev["owner_still_exists"] = _owner_exists(client, owner, headers)
             if settings.swh_enrichment:
-                # Ne leve PAS l'ambiguite prive/supprime — rien de public ne le peut.
-                # Repond a l'autre question, celle du piege 3 : ce depot a-t-il existe
-                # publiquement ? Une archive SWH prouve qu'il a vecu, donc que son
-                # absence d'aujourd'hui est du rot et non un lien qui n'a jamais marche.
+                # Does NOT lift the private/deleted ambiguity — nothing public can.
+                # Answers the other question, pitfall 3's: did this repository exist
+                # publicly? A SWH archive proves it lived, so its absence today is rot
+                # and not a link that never worked.
                 arch = ever_existed(client, f"https://github.com/{owner}/{repo}")
                 ev["swh_known"] = arch.known
                 ev["swh_last_visit"] = arch.last_visit
@@ -80,14 +81,14 @@ class GitHubProber(Prober):
             return ProbeResult(Status.DEAD, "api", "github_api_404", ev)
 
         if r.status_code == 451:
-            # Retrait pour raisons legales : la ressource a existe, l'acces est bloque.
+            # Taken down for legal reasons: the resource existed, access is blocked.
             return ProbeResult(Status.RESTRICTED, "api", "github_api_451_legal", ev)
 
         if r.status_code in (403, 429):
             remaining = r.headers.get("x-ratelimit-remaining")
             ev |= {"x_ratelimit_remaining": remaining, "retry_after": r.headers.get("retry-after")}
             if remaining == "0" or r.status_code == 429:
-                # Echec du crawler, pas du lien (§4 piege 1).
+                # A crawler failure, not a link failure (§4 pitfall 1).
                 return ProbeResult(Status.UNKNOWN, "api", "github_rate_limited", ev)
             return ProbeResult(Status.UNKNOWN, "api", "github_api_403_unexplained", ev)
 
@@ -96,21 +97,21 @@ class GitHubProber(Prober):
 
 
 class _RateLimitTracker:
-    """Suit le quota annonce par GitHub dans ses en-tetes.
+    """Track the quota GitHub announces in its headers.
 
-    Ajoute apres le run du 2026-09-20, ou trois passages du jeu de controle ont epuise
-    les 60 requetes/heure du mode anonyme et rendu neuf cas `dead` en `unknown`. Le
-    classement etait correct — un echec de crawler n'est pas un lien mort — mais la
-    mesure devenait impossible. Le probleme est d'ordonnancement, pas de classification.
+    Added after the 2026-09-20 run, where three runs of the control set exhausted the 60
+    requests/hour of anonymous mode and turned nine `dead` cases into `unknown`. The
+    classification was correct — a crawler failure is not a dead link — but measurement
+    became impossible. The problem is one of scheduling, not classification.
 
-    Deux consequences, toutes deux de la responsabilite du §4 piege 5 :
-    la sonde cesse de frapper quand le quota est epuise plutot que d'accumuler des 403,
-    et le controle du proprietaire (qui double le cout de chaque 404) devient optionnel.
+    Two consequences, both falling under §4 pitfall 5: the prober stops hitting when the
+    quota is exhausted rather than piling up 403s, and the owner check (which doubles the
+    cost of each 404) becomes optional.
     """
 
     RESERVE = 2
-    """Requetes gardees en reserve : le controle de proprietaire ne doit jamais etre ce
-    qui epuise le quota au detriment d'une sonde principale."""
+    """Requests kept in reserve: the owner check must never be what exhausts the quota at
+    the expense of a main probe."""
 
     def __init__(self) -> None:
         self.remaining: int | None = None
@@ -142,11 +143,11 @@ _QUOTA = _RateLimitTracker()
 
 
 def _owner_exists(client: httpx.Client, owner: str, headers: dict[str, str]) -> bool | None:
-    """Le compte proprietaire existe-t-il encore ? N'est pas une preuve d'existence du
-    depot, mais separe « compte supprime » de « depot supprime » dans l'analyse.
+    """Does the owner account still exist? Not proof that the repository exists, but it
+    separates "account deleted" from "repository deleted" in the analysis.
 
-    Enrichissement, pas classification : il est abandonne des que le quota devient
-    serre, et le resultat vaut alors `None` (indetermine), jamais une valeur inventee.
+    Enrichment, not classification: it is dropped as soon as the quota gets tight, and the
+    result is then `None` (undetermined), never an invented value.
     """
     if _QUOTA.low():
         return None

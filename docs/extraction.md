@@ -1,263 +1,256 @@
-# E3 — Trouver les liens dans les articles
+# E3 — Finding the links in papers
 
-> Critère de passage (PLAN.md §7) : **rappel vérifié sur un sous-ensemble où les liens sont
-> déjà connus via métadonnées structurées.**
-> **Vérifié au 2026-09-20. Le résultat est mauvais, et c'est l'information utile.**
+> Pass criterion (PLAN.md §7): **recall verified on a subset where links are already known through
+> structured metadata.**
+> **Verified on 2026-09-20. The result is poor, and that is the useful information.**
 
 ---
 
-## 1. La vérité terrain se fabrique, encore une fois
+## 1. The ground truth builds itself, once again
 
-Il n'a pas fallu annoter un seul article. Tout document publié porte ses liens **balisés par
-l'éditeur** :
+Not a single paper had to be annotated. Every published document carries its links **tagged by the
+publisher**:
 
-- un PDF les stocke en annotations `/URI` — c'est ce qui rend un lien cliquable ;
-- un JATS les balise en `<ext-link>` ;
-- une page HTML les met en `<a href>`.
+- a PDF stores them as `/URI` annotations — which is what makes a link clickable;
+- a JATS file tags them as `<ext-link>`;
+- an HTML page puts them in `<a href>`.
 
-Notre extracteur, lui, travaille sur le **texte rendu**. Le rappel se mesure de l'un contre
-l'autre. Même principe que celui qui fonde le projet entier : quand la vérité terrain coûte cher,
-on déplace l'expérience là où elle se fabrique seule.
+Our extractor works on the **rendered text**. Recall is measured one against the other. Same
+principle as the one the whole project rests on: when ground truth is expensive, move the experiment
+to where it builds itself.
 
-## 2. Le chiffre
+## 2. The figure
 
-Sur 187 documents PDF et JATS du sous-échantillon :
+On 187 PDF and JATS documents from the subsample:
 
-| | liens balisés | retrouvés dans le texte | rappel |
+| | tagged links | found in the text | recall |
 |---|---|---|---|
-| **Ensemble** | 1 359 | 673 | **0,495** |
-| DOI (bibliographie surtout) | 1 347 | 669 | 0,497 |
-| Dépôts (GitHub, Zenodo, OSF…) | 12 | 4 | 0,333 |
+| **Overall** | 1,359 | 673 | **0.495** |
+| DOIs (mostly bibliography) | 1,347 | 669 | 0.497 |
+| Repositories (GitHub, Zenodo, OSF…) | 12 | 4 | 0.333 |
 
-Et dans l'autre sens : **690 liens trouvés dans le texte que le balisage ne contient pas.**
+And the other way round: **690 links found in the text that the markup does not contain.**
 
-**Conclusion, qui est la vraie sortie d'E3 : ni l'une ni l'autre des deux sources ne suffit.**
-L'extraction textuelle rate la moitié de ce que l'éditeur a balisé ; le balisage rate 690 liens
-que le texte porte en clair. L'extracteur de production prend donc **l'union des deux**, ce qui
-était déjà le cas dans `extract/links.py`, et ce qui est désormais justifié par une mesure au lieu
-d'une intuition.
+**Conclusion, which is E3's real output: neither source suffices.** Text extraction misses half of
+what the publisher tagged; the markup misses 690 links that the text carries in plain form. The
+production extractor therefore takes **the union of the two**, which was already the case in
+`extract/links.py`, and is now justified by a measurement rather than an intuition.
 
-### La réserve à ne pas cacher
+### The caveat not to hide
 
-**Douze liens de dépôt, c'est trop peu pour conclure quoi que ce soit** sur le rappel de la
-population qui intéresse réellement le projet. 0,333 sur n = 12, c'est quatre liens sur douze.
-Ce chiffre ne doit pas être cité.
+**Twelve repository links are too few to conclude anything** about recall on the population the
+project actually cares about. 0.333 on n = 12 is four links out of twelve. This figure must not be
+quoted.
 
-C'est en soi un résultat : sur 400 articles en accès ouvert, le balisage éditorial ne déclare que
-douze liens de dépôt. Les liens d'artefacts sont **rares**, et le sous-échantillon d'E3 devra être
-nettement agrandi avant E5 pour que le rappel par famille veuille dire quelque chose.
+That is a result in itself: across 400 open-access papers, publisher markup declares only twelve
+repository links. Artifact links are **rare**, and the E3 subsample had to be enlarged substantially
+before E5 for per-family recall to mean anything.
 
-## 3. Trois défauts trouvés en mesurant, pas en relisant
+## 3. Three defects found by measuring, not by reviewing
 
-### 3.1 Une page de notice n'est pas un article — le plus grave
+### 3.1 A landing page is not a paper — the most serious
 
-La première version classait les localisations par type de source : dépôts d'abord, éditeurs
-ensuite. Elle choisissait donc la **page de notice** d'un dépôt (`zenodo.org/records/…`) avant le
-PDF de l'éditeur.
+The first version ranked locations by source type: repositories first, publishers next. It
+therefore picked a repository's **landing page** (`zenodo.org/records/…`) over the publisher's PDF.
 
-Or une page de notice n'est pas l'article. Son texte est celui du site hôte, et ses liens sont ceux
-de son menu et de son pied de page.
+But a landing page is not the paper. Its text belongs to the host site, and its links are those of
+its menu and footer.
 
-Le défaut n'était pas visible à la récupération : elle « marchait », elle rendait 200 et du HTML.
-Il est apparu au calcul du rappel, sous une forme déroutante : les liens de dépôt soi-disant
-manqués étaient les liens du site Zenodo **vers son propre code** — `github.com/zenodo/zenodo-rdm`,
-`zenodo.org/help/statistics`. Sur 78 liens de dépôt manqués, 70 étaient de ce type.
+The defect was invisible at retrieval time: retrieval "worked", returning 200 and HTML. It surfaced
+when computing recall, in a puzzling form: the supposedly missed repository links were Zenodo's own
+links **to its own source code** — `github.com/zenodo/zenodo-rdm`, `zenodo.org/help/statistics`. Of
+78 missed repository links, 70 were of this kind.
 
-Sans cette mesure, le run S1 complet aurait extrait les liens de pages de notice au lieu
-d'articles, et produit un taux de survie parfaitement propre et parfaitement faux.
+Without this measurement, the full S1 run would have extracted links from landing pages instead of
+papers, and produced a perfectly clean and perfectly wrong survival rate.
 
-Correction : **tout PDF passe avant toute page HTML.** L'ordre est désormais PDF de dépôt, PDF
-d'éditeur, page de dépôt, page d'éditeur.
+Fix: **every PDF now ranks before every HTML page.** The order is now repository PDF, publisher PDF,
+repository page, publisher page.
 
-> **Conséquence opérationnelle** : le cache de textes intégraux constitué avant cette correction
-> contient des pages de notice. Il doit être **reconstruit avant E5**.
+> **Operational consequence**: the full-text cache built before this fix contained landing pages.
+> It was **rebuilt before E5**.
 
-### 3.2 Le rappel mesuré sur du HTML ne veut rien dire
+### 3.2 Recall measured on HTML is meaningless
 
-Corollaire du précédent. Une page HTML mélange l'article et l'habillage du site, et aucune règle
-par expression régulière ne les sépare de façon fiable. Les annotations d'un PDF et les
-`<ext-link>` d'un JATS, elles, appartiennent au document.
+A corollary of the above. An HTML page mixes the paper with the site's chrome, and no
+regular-expression rule separates them reliably. A PDF's annotations and a JATS file's
+`<ext-link>` elements, by contrast, belong to the document.
 
-Le rappel n'est donc calculé que sur PDF et JATS. **125 pages HTML ont été écartées du calcul**, et
-ce nombre est reporté à chaque exécution plutôt que tu.
+Recall is therefore computed only on PDF and JATS. **125 HTML pages were excluded from the
+computation**, and this number is reported on every run rather than kept quiet.
 
-### 3.3 Une URL réelle faisait tomber le pipeline
+### 3.3 A real URL brought the pipeline down
 
-Le calcul s'est arrêté net sur `ValueError: Invalid IPv6 URL` — un `[` isolé dans une URL trouvée
-dans un PDF suffit à faire lever `urlsplit` de la bibliothèque standard.
+The computation stopped dead on `ValueError: Invalid IPv6 URL` — a lone `[` in a URL found in a PDF
+is enough to make the standard library's `urlsplit` raise.
 
-Une URL d'article est une chaîne trouvée dans un PDF : elle peut être n'importe quoi. Aucune
-fonction de `normalize.py` ne doit lever à cause d'elle. Sept URL hostiles sont entrées comme
-régressions.
+A paper's URL is a string found in a PDF: it can be anything. No function in `normalize.py` may
+raise because of it. Seven hostile URLs were added as regressions.
 
-Sur un run de 40 000 articles, ce défaut aurait interrompu le traitement à un moment imprévisible.
+On a 40,000-paper run, this defect would have interrupted processing at an unpredictable moment.
 
-## 4. Les causes des liens manqués, comptées
+## 4. The causes of missed links, counted
 
-Sur les liens de dépôt balisés et non retrouvés dans le texte :
+Among repository links tagged in the markup but not found in the text:
 
-| cause | part | corrigeable ? |
+| cause | share | fixable? |
 |---|---|---|
-| absente du texte (lien posé derrière un mot cliquable) | 73 % | non — limite du monde, pas du code |
-| hôte cité mais URL masquée | 12 % | non |
-| césure PDF non réparée | 10 % | partiellement |
-| présente mais ratée par l'extraction | 5 % | oui |
+| absent from the text (link placed behind a clickable word) | 73% | no — a limit of the world, not of the code |
+| host mentioned but URL hidden | 12% | no |
+| unrepaired PDF line break | 10% | partly |
+| present but missed by extraction | 5% | yes |
 
-Les 85 % du haut du tableau ne sont **pas** un défaut de l'extracteur : quand un éditeur écrit
-« our GitHub repository » et met l'URL derrière le mot, aucune lecture du texte ne peut la
-retrouver. C'est précisément pourquoi le balisage entre dans l'union.
+The top 85% of the table are **not** an extractor defect: when a publisher writes "our GitHub
+repository" and puts the URL behind the words, no reading of the text can recover it. That is
+precisely why the markup is part of the union.
 
-La césure PDF reste partiellement irréductible : une URL coupée au milieu d'un segment de chemin
-(`low-code-LLM-CDE-` puis retour à la ligne puis `extraction`) ne peut pas être recollée sans
-risquer d'inventer des liens. Recoller large serait pire que manquer.
+PDF line breaks remain partly irreducible: a URL split in the middle of a path segment
+(`low-code-LLM-CDE-`, then a line break, then `extraction`) cannot be rejoined without risking
+inventing links. Rejoining too broadly would be worse than missing.
 
-## 5. Récupération du texte intégral : ce qui est accessible
+## 5. Full-text retrieval: what is accessible
 
-Trois mesures faites avant d'écrire la moindre ligne :
+Three measurements made before writing a single line:
 
-- **PDF 54 %, HTML 7 %** parmi les localisations de `best_oa_location`. Un extracteur HTML seul
-  aurait mesuré une discipline, pas quatre.
-- **Europe PMC ne couvre que la médecine** : 38 % des articles médicaux en JATS, 1 à 2 % ailleurs.
-  Excellente source, pas une source d'échantillon.
-- **Préférer les dépôts fait passer la récupération de 61 % à 72 %**, et le moissonnage réel
-  atteint ~80 %. Wiley, ScienceDirect, MDPI et OUP répondent 403 à un robot ; arXiv, PMC et les
-  dépôts institutionnels non.
+- **PDF 54%, HTML 7%** among `best_oa_location` locations. An HTML-only extractor would have
+  measured one discipline, not four.
+- **Europe PMC only covers medicine**: 38% of medical papers in JATS, 1 to 2% elsewhere. An
+  excellent source, but not a sampling source.
+- **Preferring repositories raises retrieval from 61% to 72%**, and real harvesting reaches ~80%.
+  Wiley, ScienceDirect, MDPI and OUP answer 403 to a crawler; arXiv, PMC and institutional
+  repositories do not.
 
-On va chercher ailleurs une copie que l'auteur a lui-même déposée. **Aucun 403 n'est forcé**, aucun
-blocage n'est contourné (§4, piège 5).
+We fetch elsewhere a copy the author deposited themselves. **No 403 is forced**, no block is
+bypassed (§4, pitfall 5).
 
-**L'attrition résiduelle (~20 %) est une limite à publier**, et à ventiler par strate : si elle est
-corrélée à l'année, elle biaise la variable explicative principale du projet.
+**The residual attrition (~20%) is a limitation to be published**, broken down by stratum: if it
+correlated with year, it would bias the project's main explanatory variable.
 
-## 6. Provenance d'un lien
+## 6. Provenance of a link
 
-Un lien annoncé dans « Data Availability » est une promesse explicite de l'article. Le même lien
-dans la bibliographie peut appartenir à un article cité. Les confondre reviendrait à attribuer à
-des auteurs une promesse qu'ils n'ont pas faite — ce que le §9 interdit.
+A link announced in "Data Availability" is an explicit promise by the paper. The same link in the
+bibliography may belong to a cited paper. Confusing the two would attribute to authors a promise
+they did not make — which §9 forbids.
 
-Trois provenances : `availability_statement`, `body`, `references`. La bibliographie est repérée à
-la **dernière** occurrence du titre, pas la première : un article mentionne souvent « References »
-dans un sommaire avant la vraie section, et prendre la première classerait la moitié du corps de
-texte en provenance douteuse.
+Three provenances: `availability_statement`, `body`, `references`. The bibliography is located at
+the **last** occurrence of its heading, not the first: a paper often mentions "References" in a
+table of contents before the real section, and taking the first would classify half of the body
+text as doubtful provenance.
 
-Un lien venu des seules annotations est marqué `body` : une annotation ne dit pas dans quelle
-section elle se trouve.
+A link that comes only from annotations is marked `body`: an annotation does not say which section
+it sits in.
 
-## 7. Commandes
+## 7. Commands
 
 ```bash
-export ARTIFACT_ROT_CONTACT="vous@exemple.org"
+export ARTIFACT_ROT_CONTACT="you@example.org"
 
-uv run python -m artifact_rot.harvest fetch 400    # telecharge et met en cache
-uv run python -m artifact_rot.harvest recall       # mesure le rappel
-uv run python -m artifact_rot.harvest links        # produit les liens a sonder
+uv run python -m artifact_rot.harvest fetch 400    # download and cache
+uv run python -m artifact_rot.harvest recall       # measure recall
+uv run python -m artifact_rot.harvest links        # produce the links to probe
 ```
 
 ---
 
-## 8. Ce qui existe ailleurs — trois pistes évaluées, une retenue
+## 8. What exists elsewhere — three options evaluated, one adopted
 
-Le plan impose de regarder avant de construire. Trois outils ou services ont été évalués **sur
-notre propre échantillon**, pas sur leur documentation.
+The plan requires looking before building. Three tools or services were evaluated **on our own
+sample**, not on their documentation.
 
-### 8.1 ScholExplorer / Scholix — abandonné, et c'est un résultat
+### 8.1 ScholExplorer / Scholix — dropped, and that is a result
 
-[ScholExplorer](https://scholexplorer.openaire.eu/) (OpenAIRE) agrège les liens
-publication ↔ jeu de données déclarés par Crossref, DataCite et OpenAIRE. Sur le papier, c'est le
-raccourci idéal : on n'extrait plus rien, on interroge une base curée.
+[ScholExplorer](https://scholexplorer.openaire.eu/) (OpenAIRE) aggregates publication ↔ dataset
+links declared by Crossref, DataCite and OpenAIRE. On paper, it is the ideal shortcut: nothing to
+extract, just query a curated database.
 
-Mesure sur 200 articles de notre échantillon ayant un DOI :
+Measured on 200 papers from our sample that have a DOI:
 
 | | |
 |---|---|
-| articles avec au moins un lien Scholix | 126 / 200 (63 %) |
-| dont au moins un lien vers un **jeu de données** | **2 / 200 (1 %)** |
-| liens `IsRelatedTo → publication` (citations) | 1 060 |
-| liens `IsRelatedTo → dataset` | 2 |
+| papers with at least one Scholix link | 126 / 200 (63%) |
+| of which at least one link to a **dataset** | **2 / 200 (1%)** |
+| `IsRelatedTo → publication` links (citations) | 1,060 |
+| `IsRelatedTo → dataset` links | 2 |
 
-**Le graphe curé est quasiment vide pour ce qui nous intéresse.** Ce qu'il contient, ce sont des
-citations entre articles. La piste est abandonnée.
+**The curated graph is almost empty for what we need.** What it contains is citations between
+papers. This option is dropped.
 
-C'est en soi une observation à reprendre dans le rapport E6 : non seulement les liens meurent,
-mais **les métadonnées structurées censées les enregistrer n'existent quasiment pas**. Un lien de
-données annoncé dans un article n'a, dans l'immense majorité des cas, aucune trace ailleurs que
-dans le texte de l'article.
+It is itself an observation for the E6 report: not only do links die, but **the structured metadata
+meant to record them barely exists**. A data link announced in a paper has, in the vast majority of
+cases, no trace anywhere other than in the paper's text.
 
-### 8.2 GROBID / Docling — pas maintenant, et pour une raison mesurée
+### 8.2 GROBID / Docling — not now, for a measured reason
 
-[GROBID](https://github.com/grobidOrg/grobid) est la référence pour convertir un PDF scientifique
-en XML structuré ; [Docling](https://github.com/docling-project/docling) fait un travail
-comparable sans serveur Java. Le projet [pdf4llm](https://github.com/The-Metascience-Observatory/pdf4llm)
-montre qu'en combinant les deux on rattrape ~10 % des articles qu'aucun des deux ne traite seul.
+[GROBID](https://github.com/grobidOrg/grobid) is the reference tool for converting a scientific PDF
+into structured XML; [Docling](https://github.com/docling-project/docling) does comparable work
+without a Java server. The [pdf4llm](https://github.com/The-Metascience-Observatory/pdf4llm) project
+shows that combining the two recovers ~10% of papers that neither handles alone.
 
-Ce serait le réflexe. La mesure dit de s'abstenir pour l'instant :
+That would be the reflex. The measurement says to hold off for now:
 
-| indicateur sur nos 187 documents | valeur |
+| indicator on our 187 documents | value |
 |---|---|
-| longueur médiane du texte extrait | 36 767 caractères |
-| documents de moins de 5 000 caractères | 6 / 187 |
-| césures de fin de ligne | 0,81 pour 1 000 caractères |
-| documents au texte visiblement abîmé | 32 / 187 |
+| median length of extracted text | 36,767 characters |
+| documents under 5,000 characters | 6 / 187 |
+| end-of-line hyphenation breaks | 0.81 per 1,000 characters |
+| documents with visibly damaged text | 32 / 187 |
 
-**Le texte extrait n'est pas le goulot d'étranglement.** Les articles entiers sortent, et les
-liens manqués le sont à 85 % pour des raisons qu'aucun parseur ne corrige — l'URL est posée
-derrière un mot cliquable, et seule l'annotation du PDF la contient. Or on lit déjà les
-annotations.
+**Extracted text is not the bottleneck.** Whole papers come out, and 85% of missed links are missed
+for reasons no parser fixes — the URL sits behind a clickable word, and only the PDF annotation
+contains it. And we already read annotations.
 
-Décision : **GROBID reste une option, pas une dépendance.** Elle sera reconsidérée si E5 montre
-une attrition corrélée à la qualité du texte. Ajouter un service Java et Docker à un projet mené
-seul, pour un gain borné à ~10 % d'un sous-ensemble, est un mauvais échange aujourd'hui.
+Decision: **GROBID remains an option, not a dependency.** It will be reconsidered if E5 shows
+attrition correlated with text quality. Adding a Java service and Docker to a one-person project,
+for a gain bounded at ~10% of a subset, is a bad trade today.
 
-### 8.3 ODDPub — méthode reprise, code non réutilisable
+### 8.3 ODDPub — method reused, code not reusable
 
-[ODDPub](https://github.com/quest-bih/oddpub) détecte le partage de données et de code dans les
-publications biomédicales. Le paquet est en **R sous AGPL-3.0** : même situation que `metacheck`,
-le code n'est pas réutilisable dans une pile Python sans contaminer la licence.
+[ODDPub](https://github.com/quest-bih/oddpub) detects data and code sharing in biomedical
+publications. The package is **R under AGPL-3.0**: same situation as `metacheck`, the code cannot be
+reused in a Python stack without contaminating the licence.
 
-Mais [l'article publié](https://doi.org/10.5334/dsj-2020-042) est sous **CC BY 4.0**, donc la
-**méthode** se reprend avec attribution. Ce qui est repris : le principe qu'une annonce de partage
-se détecte par **co-occurrence de catégories de mots-clés dans une même phrase**, et le découpage
-en catégories. Ce qui est propre à ce dépôt : les listes elles-mêmes, réécrites pour quatre
-disciplines au lieu de la seule biomédecine.
+But [the published paper](https://doi.org/10.5334/dsj-2020-042) is under **CC BY 4.0**, so the
+**method** can be reused with attribution. What is reused: the principle that a sharing statement is
+detected by **co-occurrence of keyword categories within a single sentence**, and the split into
+categories. What belongs to this repository: the lists themselves, rewritten for four disciplines
+instead of biomedicine only.
 
-Performances rapportées par les auteurs, à titre de repère et non de promesse sur notre corpus :
-sensibilité 0,73 / spécificité 0,97 pour les données, 0,94 / 0,82 pour le code.
+Performance reported by the authors, as a reference point and not a promise on our corpus:
+sensitivity 0.73 / specificity 0.97 for data, 0.94 / 0.82 for code.
 
-Résultat de l'implémentation, mesuré sur nos 187 documents : la détection de section est passée de
-**7 à 11 documents**, et les faux positifs ont disparu (8 → 0 sur les refus explicites).
+Result of the implementation, measured on our 187 documents: section detection rose from **7 to 11
+documents**, and false positives disappeared (8 → 0 on explicit refusals).
 
-Deux faux positifs du corpus réel sont entrés comme régressions nommées :
+Two false positives from the real corpus were added as named regressions:
 
-- « these translational symmetries are **not generally available** in curved space time » —
-  déclenchait un refus de partage sur une phrase de physique théorique ;
-- une liste de références bibliographiques déclenchait un numéro d'accès, parce que le motif
-  générique `[A-Z]{1,2}\d{5,}` attrape des numéros de citation.
+- "these translational symmetries are **not generally available** in curved space time" — triggered
+  a refusal to share on a sentence of theoretical physics;
+- a list of bibliographic references triggered an accession number, because the generic pattern
+  `[A-Z]{1,2}\d{5,}` matches citation numbers.
 
-Et un bug subtil trouvé au passage : sous `re.IGNORECASE`, `[A-Z]` accepte aussi les minuscules.
-La règle « le titre enchaîne sur la phrase, reconnaissable à la majuscule qui suit » ne
-fonctionnait donc pas du tout, et « we discuss data availability in section 4 » passait pour un
-titre de section.
+And a subtle bug found along the way: under `re.IGNORECASE`, `[A-Z]` also matches lowercase. The
+rule "the heading runs into the sentence, recognisable by the capital that follows" therefore did
+not work at all, and "we discuss data availability in section 4" passed as a section heading.
 
-## 9. La déclaration de disponibilité est une institution récente
+## 9. The data availability statement is a recent institution
 
-Mesure sur nos 187 documents :
+Measured on our 187 documents:
 
-| année | articles avec une déclaration de disponibilité |
+| year | papers with a data availability statement |
 |---|---|
-| 2010 | 0 % |
-| 2014 | 2,9 % |
-| 2018 | 0 % |
-| 2022 | 5,4 % |
-| 2025 | **16,3 %** |
+| 2010 | 0% |
+| 2014 | 2.9% |
+| 2018 | 0% |
+| 2022 | 5.4% |
+| 2025 | **16.3%** |
 
-Le gradient est net et il est réel — vérifié en cherchant la formule dans le texte brut, pas
-seulement via nos règles.
+The gradient is clear and real — verified by searching for the phrase in the raw text, not only
+through our rules.
 
-**Conséquence de conception** : restreindre l'extraction aux déclarations de disponibilité ne
-produirait quasiment rien sur les strates anciennes, qui sont précisément celles où l'effet d'âge
-se mesure. L'extraction porte donc sur **l'article entier**, et la provenance sert à interpréter,
-pas à filtrer.
+**Design consequence**: restricting extraction to availability statements would produce almost
+nothing on the old strata, which are precisely where the age effect is measured. Extraction
+therefore covers **the whole paper**, and provenance is used to interpret, not to filter.
 
-**Conséquence pour E6** : le croisement « l'article annonce-t-il un partage ? » × « le lien
-résout-il ? » sera très déséquilibré entre strates. Il devra être publié comme deux mesures
-distinctes, jamais comme un taux unique.
+**Consequence for E6**: the crossing "does the paper announce sharing?" × "does the link resolve?"
+will be very unbalanced across strata. It must be published as two separate measurements, never as a
+single rate.
